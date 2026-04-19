@@ -1,0 +1,182 @@
+@media (max-width: 1100px) {
+  .summary-strip__metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .window-status-strip {
+    grid-template-columns: 1fr;
+    gap: 0.46rem;
+  }
+
+  .window-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-workbench {
+    grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  }
+
+  .toolbar-section--actions {
+    grid-column: 1 / -1;
+  }
+
+  .inspection-tray {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar-grid {
+    flex-wrap: wrap;
+  }
+
+  .legacy-timetable {
+    grid-template-columns: 1fr;
+    gap: 0.6rem;
+  }
+
+  .legacy-timetable__board {
+    padding-left: 0;
+  }
+
+  .legacy-enrolment__table {
+    font-size: 0.74rem;
+  }
+
+  .announcement-highlights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .timetable-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quick-dock-wrap {
+    right: 0.55rem;
+  }
+
+  .quick-dock {
+    width: min(100%, 420px);
+  }
+}
+
+@media (max-width: 760px) {
+  .summary-strip__metrics,
+  .window-status-grid,
+  .toolbar-workbench,
+  .toolbar-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inspection-tray {
+    padding-inline: 0.5rem;
+  }
+
+  .portal-header,
+  .portal-links,
+  .page-header {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .portal-layout {
+    min-height: auto;
+  }
+
+  .toolbar-grid {
+    flex-wrap: wrap;
+  }
+
+  .toolbar-field,
+  .toolbar-field:first-child,
+  .toolbar-field:not(:first-child) {
+    flex: 1 1 100%;
+  }
+
+  .toolbar-action-cluster {
+    justify-content: stretch;
+  }
+
+  .cell-title--course {
+    flex-direction: column;
+    align-items: start;
+  }
+
+  .toolbar-toggle {
+    flex: 1 1 100%;
+  }
+
+  .legacy-timetable__row-grid,
+  .legacy-password-form {
+    grid-template-columns: 1fr;
+  }
+
+  .legacy-contact-table {
+    font-size: 0.82rem;
+  }
+
+  .legacy-password-row {
+    flex-wrap: wrap;
+  }
+
+  .legacy-enrolment__visa,
+  .legacy-enrolment__sheet {
+    padding-inline: 0.5rem;
+  }
+
+  .legacy-password-row input {
+    width: 100%;
+  }
+
+  .timetable-board {
+    grid-template-columns: 1fr;
+  }
+
+  .column-menu {
+    width: min(14rem, 70vw);
+  }
+
+  .staff-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .announcement-highlights,
+  .staff-impact-grid--compact,
+  .danger-zone {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-strip__header {
+    align-items: flex-start;
+  }
+
+  .summary-strip__header-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .danger-zone {
+    display: grid;
+  }
+
+  .staff-window-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quick-dock-wrap {
+    position: fixed;
+    top: 7.3rem;
+    right: 0.45rem;
+    z-index: 40;
+    display: block;
+    margin-bottom: 0;
+    pointer-events: none;
+  }
+
+  .quick-dock {
+    width: min(100vw - 0.9rem, 360px);
+    pointer-events: auto;
+  }
+}
