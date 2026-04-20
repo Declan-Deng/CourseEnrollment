@@ -4,6 +4,7 @@ import { ensureStaffActor } from "./actors.js";
 import { clone } from "./clone.js";
 import { CONSTRAINT_OVERRIDE_TYPES } from "./constraints.js";
 import { badRequest, notFound } from "./domainErrors.js";
+import { formatRecordTimestamp } from "./requestTrackingService.js";
 
 const ALLOWED_CONSTRAINT_TYPES = new Set(Object.values(CONSTRAINT_OVERRIDE_TYPES));
 
@@ -45,7 +46,7 @@ export function createConstraintOverride(payload, actor = { type: "staff", id: "
     constraintTypes: validateConstraintTypes(payload.constraintTypes),
     note: typeof payload.note === "string" ? payload.note.trim() : "",
     createdBy: effectiveActor.id,
-    createdAt: payload.createdAt,
+    createdAt: payload.createdAt ?? formatRecordTimestamp(),
     active: payload.active ?? true,
   };
 

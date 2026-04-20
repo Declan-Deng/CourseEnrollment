@@ -2,24 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { startServer } from "../src/index.js";
 
-let serverHandle = null;
-let baseUrl = "";
+const serverHandle = await startServer({
+  port: 0,
+  storageOptions: { storageMode: "memory" },
+  attachSignalHandlers: false,
+});
+serverHandle.server.unref?.();
+const address = serverHandle.server.address();
+const port = typeof address === "object" && address ? address.port : 4000;
+const baseUrl = `http://127.0.0.1:${port}`;
 
 async function requestJson(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, options);
   const body = await response.json();
   return { response, body };
 }
-
-test.before(async () => {
-  serverHandle = await startServer({
-    port: 0,
-    storageOptions: { storageMode: "memory" },
-  });
-  const address = serverHandle.server.address();
-  const port = typeof address === "object" && address ? address.port : 4000;
-  baseUrl = `http://127.0.0.1:${port}`;
-});
 
 test.beforeEach(async () => {
   await requestJson("/api/reset?scope=all", {
@@ -89,6 +86,15 @@ test("invalid admin offering patch returns a non-500 validation response", async
 });
 
 test("admin offering preview returns impact summary without mutating state", async () => {
+  await requestJson("/api/enrollment/request", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-student-id": "4000000001",
+    },
+    body: JSON.stringify({ courseId: "IDAT7212-A-S2" }),
+  });
+
   const preview = await requestJson("/api/admin/offerings/IDAT7212-A-S2/preview", {
     method: "POST",
     headers: {
@@ -109,10 +115,17 @@ test("admin offering preview returns impact summary without mutating state", asy
   assert.equal(preview.response.status, 200);
   assert.equal(preview.body.ok, true);
   assert.equal(typeof preview.body.summary.capacityChange, "number");
+  assert.ok(Array.isArray(preview.body.seatOccupants));
+  assert.equal(preview.body.seatOccupants[0]?.studentId, "4000000001");
+  assert.equal(preview.body.seatOccupants[0]?.source, "student-request");
+  assert.equal(preview.body.seatOccupantSummary.totalCount, 29);
+  assert.equal(preview.body.seatOccupantSummary.trackedCount, 1);
+  assert.equal(preview.body.seatOccupantSummary.generatedCount, 28);
+  assert.equal(preview.body.seatOccupants.at(-1)?.source, "faculty-record");
 
   const bootstrap = await requestJson("/api/bootstrap");
   const offering = bootstrap.body.courses.find((course) => course.id === "IDAT7212-A-S2");
-  assert.equal(offering.capacityView.primary, "8 seat(s) left");
+  assert.equal(offering.capacityView.primary, "7 seat(s) left");
 });
 
 test("admin override lifecycle works over HTTP and changes student preview", async () => {
@@ -144,6 +157,7 @@ test("admin override lifecycle works over HTTP and changes student preview", asy
   assert.equal(created.response.status, 200);
   assert.equal(created.body.ok, true);
   assert.equal(created.body.override.active, true);
+  assert.match(created.body.override.createdAt, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
 
   const allowedPreview = await requestJson("/api/enrollment/preview", {
     method: "POST",

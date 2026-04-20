@@ -14,6 +14,7 @@ import {
   listAdminOfferingView,
   listAdminRequestView,
   initDataStore,
+  previewAdminOfferingImpact,
   previewRequest,
   resetDemo,
   resolveAdminRequest,
@@ -166,10 +167,11 @@ test("student snapshots stay isolated when a different studentId is used", async
 
   const defaultSnapshot = await getBootstrap();
   const otherStudentSnapshot = await getBootstrap({ studentId: "4000000001" });
+  const seededOtherStudent = createSeedDomainSnapshot("4000000001").student;
 
   assert.equal(defaultSnapshot.student.id, "3036605296");
   assert.equal(otherStudentSnapshot.student.id, "4000000001");
-  assert.equal(otherStudentSnapshot.student.username, "4000000001");
+  assert.equal(otherStudentSnapshot.student.username, seededOtherStudent.username);
   assert.deepEqual(
     otherStudentSnapshot.approvedCourses.map((course) => course.code),
     ["IDAT7212"],
@@ -228,6 +230,30 @@ test("admin views can inspect shared offerings and cross-student request queues"
   assert.ok(offerings.some((offering) => offering.id === "MEBS6003-A-S2"));
   assert.ok(requests.some((request) => request.student.id === "4000000001" && request.offeringId === "MEBS6003-A-S2"));
   assert.ok(requests.some((request) => request.student.id === "3036605296" && request.offeringId === "COMP7906-B-S2"));
+});
+
+test("admin offering preview exposes tracked approved students across the shared offering", async () => {
+  await submitRequest("IDAT7212-A-S2", { studentId: "4000000001" });
+
+  const preview = await previewAdminOfferingImpact("IDAT7212-A-S2", {
+    capacity: 36,
+    seatsTaken: 29,
+    waitlistCount: 1,
+    allocationPolicy: "firstComeFirstServed",
+    requestWindow: { isOpen: true, closesOn: "31 January 2026" },
+    dropWindow: { isOpen: true, closesOn: "31 January 2026" },
+  });
+
+  assert.equal(preview.ok, true);
+  assert.ok(Array.isArray(preview.seatOccupants));
+  assert.equal(preview.seatOccupants.length, 29);
+  assert.equal(preview.seatOccupants[0].studentId, "4000000001");
+  assert.equal(preview.seatOccupants[0].source, "student-request");
+  assert.match(preview.seatOccupants[0].enrolledAt, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(preview.seatOccupantSummary.totalCount, 29);
+  assert.equal(preview.seatOccupantSummary.trackedCount, 1);
+  assert.equal(preview.seatOccupantSummary.generatedCount, 28);
+  assert.equal(preview.seatOccupants.at(-1)?.source, "faculty-record");
 });
 
 test("admin updates can change offering windows and manually resolve requests", async () => {
@@ -333,7 +359,8 @@ test("admin rejection closes a request without creating an enrollment and writes
 });
 
 test("global reset restores shared offerings, clears audit history, and rebuilds demo students from seed", async () => {
-  const baselineOffering = createSeedDomainSnapshot().offerings.find((item) => item.id === "IDAT7212-A-S2");
+  const baselineSnapshot = createSeedDomainSnapshot();
+  const baselineOffering = baselineSnapshot.offerings.find((item) => item.id === "IDAT7212-A-S2");
 
   await submitRequest("IDAT7212-A-S2", { studentId: "4000000001" });
   await updateAdminOffering(
@@ -354,7 +381,7 @@ test("global reset restores shared offerings, clears audit history, and rebuilds
   assert.equal(offering?.waitlistCount, baselineOffering?.waitlistCount);
   assert.ok(defaultSnapshot.activeRequestRecords.some((record) => record.offeringId === "COMP7906-B-S2"));
   assert.equal(otherStudentSnapshot.approvedCourses.length, 0);
-  assert.equal(auditTrail.length, 0);
+  assert.equal(auditTrail.length, baselineSnapshot.auditEvents.length);
 });
 
 test("admin overrides can temporarily bypass timetable clash rules and revert cleanly", async () => {

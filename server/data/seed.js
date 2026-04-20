@@ -9,7 +9,7 @@ function createElectXCourse({
   faculty = "Faculty of Engineering",
   crossFaculty = false,
   requestOpen = false,
-  dropOpen = false,
+  dropOpen = true,
   allocationPolicy = "firstComeFirstServed",
   seats = {
     capacity: 30,
@@ -368,7 +368,7 @@ export const initialState = {
       allocationPolicy: "lottery",
       crossFaculty: false,
       requestOpen: true,
-      dropOpen: false,
+      dropOpen: true,
       seats: {
         capacity: 32,
         taken: 32,
@@ -498,7 +498,7 @@ export const initialState = {
       allocationPolicy: "lottery",
       crossFaculty: false,
       requestOpen: true,
-      dropOpen: false,
+      dropOpen: true,
       seats: {
         capacity: 60,
         taken: 60,
@@ -524,7 +524,7 @@ export const initialState = {
       allocationPolicy: "priorityReview",
       crossFaculty: true,
       requestOpen: true,
-      dropOpen: false,
+      dropOpen: true,
       seats: {
         capacity: 35,
         taken: 30,
@@ -550,7 +550,7 @@ export const initialState = {
       allocationPolicy: "priorityReview",
       crossFaculty: true,
       requestOpen: true,
-      dropOpen: false,
+      dropOpen: true,
       seats: {
         capacity: 24,
         taken: 19,

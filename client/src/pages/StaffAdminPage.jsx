@@ -27,6 +27,7 @@ import {
   formatPolicyLabel,
   formatRequestStatusLabel,
   formatResolutionActionLabel,
+  formatSeatOccupantTimestamp,
   formatStaffTimestamp,
   formatWindow,
   hasOverrideImpactChange,
@@ -63,9 +64,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const [selectedRequestIds, setSelectedRequestIds] = useState([]);
   const [overrideSearch, setOverrideSearch] = useState("");
   const [overrideActiveFilter, setOverrideActiveFilter] = useState("active");
+  const [selectedOverrideId, setSelectedOverrideId] = useState("");
   const [overrideImpact, setOverrideImpact] = useState(null);
   const [overridePreviewBusy, setOverridePreviewBusy] = useState(false);
   const [offeringImpact, setOfferingImpact] = useState(null);
+  const [offeringImpactDetail, setOfferingImpactDetail] = useState("");
+  const [offeringSeatSearch, setOfferingSeatSearch] = useState("");
+  const [offeringSeatSortKey, setOfferingSeatSortKey] = useState("timeDesc");
   const [offeringPreviewBusy, setOfferingPreviewBusy] = useState(false);
   const [requestPreviewAction, setRequestPreviewAction] = useState("approve");
   const [requestPreviewImpact, setRequestPreviewImpact] = useState(null);
@@ -243,6 +248,30 @@ export function StaffAdminPage({ onReturnToPortal }) {
     [activeOnly, requestSearch, requestStatusFilter, requests],
   );
   const selectedRequest = visibleRequests.find((item) => item.id === selectedRequestId) ?? null;
+  const visibleSeatOccupants = useMemo(() => {
+    const occupants = offeringImpact?.seatOccupants ?? [];
+    const filtered = !offeringSeatSearch.trim()
+      ? occupants
+      : occupants.filter((occupant) =>
+          includesText([occupant.studentId, occupant.enrolledAt, occupant.enrollmentId].join(" "), offeringSeatSearch),
+        );
+
+    return [...filtered].sort((left, right) => {
+      if (offeringSeatSortKey === "studentAsc") {
+        return String(left.studentId).localeCompare(String(right.studentId));
+      }
+
+      if (offeringSeatSortKey === "studentDesc") {
+        return String(right.studentId).localeCompare(String(left.studentId));
+      }
+
+      if (offeringSeatSortKey === "timeAsc") {
+        return String(left.enrolledAt ?? "").localeCompare(String(right.enrolledAt ?? ""));
+      }
+
+      return String(right.enrolledAt ?? "").localeCompare(String(left.enrolledAt ?? ""));
+    });
+  }, [offeringImpact?.seatOccupants, offeringSeatSearch, offeringSeatSortKey]);
   const selectedRequestIdSet = useMemo(() => new Set(selectedRequestIds), [selectedRequestIds]);
   const selectedVisibleRequests = useMemo(
     () => visibleRequests.filter((item) => selectedRequestIdSet.has(item.id)),
@@ -302,6 +331,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
       }),
     [overrideActiveFilter, overrideSearch, overrides],
   );
+  const selectedOverride = visibleOverrides.find((item) => item.id === selectedOverrideId) ?? null;
   const visibleAuditEvents = useMemo(
     () =>
       auditEvents.filter((item) => {
@@ -378,6 +408,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
   useEffect(() => {
     setSelectedRequestIds((current) => current.filter((id) => visibleRequests.some((item) => item.id === id)));
   }, [visibleRequests]);
+
+  useEffect(() => {
+    setSelectedOverrideId((current) => {
+      if (!visibleOverrides.length) {
+        return "";
+      }
+
+      return visibleOverrides.some((item) => item.id === current) ? current : visibleOverrides[0].id;
+    });
+  }, [visibleOverrides]);
 
   useEffect(() => {
     setSelectedAuditId((current) => {
@@ -558,9 +598,25 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setBanner({ tone, title, detail });
   }
 
+  function getSelectableRowClass(isSelected) {
+    return isSelected
+      ? "portal-row portal-row--staff-selectable portal-row--selected portal-row--staff-selected"
+      : "portal-row portal-row--staff-selectable";
+  }
+
+  function handleSelectableRowKeyDown(event, callback) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      callback();
+    }
+  }
+
   function selectOffering(offering) {
     setSelectedOfferingId(offering.id);
     setOfferingForm(buildOfferingForm(offering));
+    setOfferingImpactDetail("");
+    setOfferingSeatSearch("");
+    setOfferingSeatSortKey("timeDesc");
   }
 
   function toggleOverrideConstraint(constraintId) {
@@ -1027,11 +1083,17 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       visibleOfferings.map((offering) => (
                       <tr
                         key={offering.id}
-                        className={offering.id === selectedOfferingId ? "portal-row portal-row--selected" : "portal-row"}
+                        className={getSelectableRowClass(offering.id === selectedOfferingId)}
                         onClick={() => selectOffering(offering)}
+                        onKeyDown={(event) => handleSelectableRowKeyDown(event, () => selectOffering(offering))}
+                        tabIndex={0}
+                        aria-selected={offering.id === selectedOfferingId}
                       >
                         <td>
-                          <strong>{offering.courseCode}</strong>
+                          <div className="staff-row-title">
+                            <strong>{offering.courseCode}</strong>
+                            {offering.id === selectedOfferingId ? <span className="staff-selected-chip">Selected</span> : null}
+                          </div>
                           <div>{offering.id}</div>
                         </td>
                         <td>{formatPolicyLabel(offering.allocationPolicy)}</td>
@@ -1052,10 +1114,71 @@ export function StaffAdminPage({ onReturnToPortal }) {
               </div>
             </section>
 
-            <section className="page-panel">
-              <h3>Offering Editor</h3>
+            <section className="page-panel page-panel--focus">
+              <h3>{selectedOffering ? `Offering Editor · ${selectedOffering.courseCode}` : "Offering Editor"}</h3>
+              {selectedOffering ? (
+                <div className="staff-selection-banner" aria-live="polite">
+                  <div className="staff-selection-banner__eyebrow">Selected offering</div>
+                  <div className="staff-selection-banner__main">
+                    <strong>{selectedOffering.courseCode}</strong>
+                    <span>{selectedOffering.id}</span>
+                  </div>
+                  {selectedOffering.title ? <div className="staff-selection-banner__note">{selectedOffering.title}</div> : null}
+                </div>
+              ) : null}
               {selectedOffering && offeringForm ? (
                 <div className="staff-form-grid">
+                  <div className="staff-context-grid">
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Availability</span>
+                      <strong className="staff-context-card__value">
+                        {Math.max(0, selectedOffering.capacity - selectedOffering.seatsTaken)} seat(s) open
+                      </strong>
+                      <span className="staff-context-card__meta">
+                        {selectedOffering.seatsTaken} taken · {selectedOffering.waitlistCount} waitlist
+                      </span>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Teaching slot</span>
+                      <strong className="staff-context-card__value">
+                        {selectedOffering.schedule?.length ? `${selectedOffering.schedule.length} meeting${selectedOffering.schedule.length === 1 ? "" : "s"}` : "No slot recorded"}
+                      </strong>
+                      <div className="staff-context-list">
+                        {selectedOffering.schedule?.length ? (
+                          selectedOffering.schedule.map((slot) => (
+                            <span key={`${slot.day}-${slot.start}-${slot.end}-${slot.venue}`}>
+                              {slot.day} {slot.start}-{slot.end}{slot.venue ? ` · ${slot.venue}` : ""}
+                            </span>
+                          ))
+                        ) : (
+                          <span>No schedule data on this offering.</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Requirements</span>
+                      <strong className="staff-context-card__value">
+                        {selectedOffering.prerequisites?.length || selectedOffering.corequisites?.length ? "Constraint-based" : "Open course"}
+                      </strong>
+                      <div className="staff-context-list">
+                        <span>
+                          Prereq: {selectedOffering.prerequisites?.length ? selectedOffering.prerequisites.join(", ") : "None"}
+                        </span>
+                        <span>
+                          Coreq: {selectedOffering.corequisites?.length ? selectedOffering.corequisites.join(", ") : "None"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Window and policy</span>
+                      <strong className="staff-context-card__value">{formatPolicyLabel(selectedOffering.allocationPolicy)}</strong>
+                      <div className="staff-context-list">
+                        <span>Request: {formatWindow(selectedOffering.requestWindow)}</span>
+                        <span>Drop: {formatWindow(selectedOffering.dropWindow)}</span>
+                        <span>Version {selectedOffering.version ?? "—"}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="staff-form-row">
                     <label>Offering</label>
                     <div>{selectedOffering.id}</div>
@@ -1145,14 +1268,31 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         <p>{offeringImpact.error.detail}</p>
                       </div>
                     ) : offeringImpact?.summary ? (
+                      <>
                       <div className="staff-impact-grid">
-                        <div className="staff-decision-card staff-decision-card--info">
-                          <span className="staff-decision-card__label">Seats</span>
+                        <button
+                          type="button"
+                          className={
+                            offeringImpactDetail === "seats"
+                              ? "staff-decision-card staff-decision-card--info staff-decision-card--interactive staff-decision-card--active"
+                              : "staff-decision-card staff-decision-card--info staff-decision-card--interactive"
+                          }
+                          onClick={() => setOfferingImpactDetail((current) => (current === "seats" ? "" : "seats"))}
+                          aria-expanded={offeringImpactDetail === "seats"}
+                        >
+                          <span className="staff-decision-card__label">Available seats</span>
                           <strong>
                             {offeringImpact.summary.availableSeatsBefore} → {offeringImpact.summary.availableSeatsAfter}
                           </strong>
-                          <p>Available seats delta: {offeringImpact.summary.seatsDelta}</p>
-                        </div>
+                          <p>
+                            Seats taken: {offeringImpact.before?.seatsTaken ?? selectedOffering?.seatsTaken ?? "—"} /{" "}
+                            {offeringImpact.before?.capacity ?? selectedOffering?.capacity ?? "—"}.
+                            {" "}Available seats delta: {offeringImpact.summary.seatsDelta}
+                          </p>
+                          <span className="staff-decision-card__hint">
+                            {offeringImpactDetail === "seats" ? "Hide tracked approved students" : "Show tracked approved students"}
+                          </span>
+                        </button>
                         <div className="staff-decision-card staff-decision-card--warn">
                           <span className="staff-decision-card__label">Affected requests</span>
                           <strong>{offeringImpact.summary.affectedActiveRequests}</strong>
@@ -1174,6 +1314,72 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           </p>
                         </div>
                       </div>
+                      {offeringImpactDetail === "seats" ? (
+                        <div className="staff-impact-detail" aria-live="polite">
+                          <div className="staff-impact-detail__header">
+                            <strong>Approved seat holders</strong>
+                            <span>{offeringImpact.seatOccupantSummary?.totalCount ?? offeringImpact.seatOccupants?.length ?? 0} confirmed students</span>
+                          </div>
+                          <div className="staff-impact-detail__toolbar">
+                            <label className="staff-impact-detail__search">
+                              <span>Search</span>
+                              <input
+                                type="search"
+                                value={offeringSeatSearch}
+                                onChange={(event) => setOfferingSeatSearch(event.target.value)}
+                                placeholder="Search by student ID"
+                              />
+                            </label>
+                            <div className="staff-impact-detail__toolbar-actions">
+                              <label className="staff-impact-detail__sort">
+                                <span>Sort</span>
+                                <select
+                                  value={offeringSeatSortKey}
+                                  onChange={(event) => setOfferingSeatSortKey(event.target.value)}
+                                >
+                                  <option value="timeDesc">Newest first</option>
+                                  <option value="timeAsc">Oldest first</option>
+                                  <option value="studentAsc">Student ID ↑</option>
+                                  <option value="studentDesc">Student ID ↓</option>
+                                </select>
+                              </label>
+                              <button
+                                type="button"
+                                className="staff-impact-detail__clear"
+                                onClick={() => setOfferingSeatSearch("")}
+                                disabled={!offeringSeatSearch.trim()}
+                              >
+                                Clear
+                              </button>
+                              <span className="staff-impact-detail__count">{visibleSeatOccupants.length} visible</span>
+                            </div>
+                          </div>
+                          <p className="staff-inline-note">
+                            This roster shows the occupied seats currently recorded for this offering.
+                          </p>
+                          {visibleSeatOccupants.length ? (
+                            <div className="staff-impact-list">
+                              {visibleSeatOccupants.map((occupant) => (
+                                <div key={occupant.enrollmentId} className="staff-impact-list__row">
+                                  <div className="staff-impact-list__main">
+                                    <strong>{occupant.studentId}</strong>
+                                  </div>
+                                  <div className="staff-impact-list__meta">
+                                    {formatSeatOccupantTimestamp(occupant.enrolledAt)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="staff-inline-note">
+                              {offeringImpact.seatOccupants?.length
+                                ? "No approved seat holders match the current search."
+                                : "No approved seat holders are recorded for this offering yet."}
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                      </>
                     ) : (
                       <p className="staff-inline-note">Select an offering and edit its values to preview the effect before saving.</p>
                     )}
@@ -1339,8 +1545,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       visibleRequests.map((request) => (
                         <tr
                           key={request.id}
-                          className={request.id === selectedRequestId ? "portal-row portal-row--selected" : "portal-row"}
+                          className={getSelectableRowClass(request.id === selectedRequestId)}
                           onClick={() => setSelectedRequestId(request.id)}
+                          onKeyDown={(event) => handleSelectableRowKeyDown(event, () => setSelectedRequestId(request.id))}
+                          tabIndex={0}
+                          aria-selected={request.id === selectedRequestId}
                         >
                           <td onClick={(event) => event.stopPropagation()}>
                             <input
@@ -1372,6 +1581,54 @@ export function StaffAdminPage({ onReturnToPortal }) {
               <h3>Request Resolution</h3>
               {selectedRequest ? (
                 <div className="staff-form-grid">
+                  <div className="staff-selection-banner" aria-live="polite">
+                    <div className="staff-selection-banner__eyebrow">Selected request</div>
+                    <div className="staff-selection-banner__main">
+                      <strong>{selectedRequest.id}</strong>
+                      <span>{selectedRequest.offeringId}</span>
+                    </div>
+                    <div className="staff-selection-banner__note">
+                      {selectedRequest.student?.name ?? selectedRequest.studentId} · {formatRequestStatusLabel(selectedRequest.status)}
+                    </div>
+                  </div>
+                  <div className="staff-context-grid">
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Student context</span>
+                      <strong className="staff-context-card__value">
+                        {selectedRequest.student?.name ?? selectedRequest.studentId}
+                      </strong>
+                      <div className="staff-context-list">
+                        <span>{selectedRequest.student?.programme ?? "Programme unavailable"}</span>
+                        <span>{selectedRequest.student?.email ?? "Email unavailable"}</span>
+                      </div>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Request timing</span>
+                      <strong className="staff-context-card__value">{selectedRequest.submittedAt ?? "Time unavailable"}</strong>
+                      <div className="staff-context-list">
+                        <span>{selectedRequest.active ? "Active request" : "Closed request"}</span>
+                        <span>{formatRequestStatusLabel(selectedRequest.status)}</span>
+                      </div>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Current message</span>
+                      <strong className="staff-context-card__value">
+                        {selectedRequest.message ? "Student-facing note present" : "No current note"}
+                      </strong>
+                      <div className="staff-context-list">
+                        <span>{selectedRequest.message ?? "No student-facing note recorded."}</span>
+                      </div>
+                    </div>
+                    <div className="staff-context-card">
+                      <span className="staff-context-card__label">Resolution note</span>
+                      <strong className="staff-context-card__value">
+                        {selectedRequest.resolution ? "Office note recorded" : "No office note yet"}
+                      </strong>
+                      <div className="staff-context-list">
+                        <span>{selectedRequest.resolution ?? "This request has not been resolved by the office."}</span>
+                      </div>
+                    </div>
+                  </div>
                   <div className="staff-form-row">
                     <label>Request ID</label>
                     <div>{selectedRequest.id}</div>
@@ -1631,7 +1888,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <tbody>
                     {visibleOverrides.length ? (
                       visibleOverrides.map((override) => (
-                        <tr key={override.id}>
+                        <tr
+                          key={override.id}
+                          className={getSelectableRowClass(override.id === selectedOverrideId)}
+                          onClick={() => setSelectedOverrideId(override.id)}
+                          onKeyDown={(event) => handleSelectableRowKeyDown(event, () => setSelectedOverrideId(override.id))}
+                          tabIndex={0}
+                          aria-selected={override.id === selectedOverrideId}
+                        >
                           <td>{override.id}</td>
                           <td>{override.studentId}</td>
                           <td>{override.offeringId}</td>
@@ -1666,6 +1930,66 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     )}
                   </tbody>
                 </table>
+              </div>
+              <div className="staff-detail-panel">
+                <h4>Override Detail</h4>
+                {selectedOverride ? (
+                  <div className="staff-form-grid staff-form-grid--compact">
+                    <div className="staff-selection-banner">
+                      <div className="staff-selection-banner__eyebrow">Selected override</div>
+                      <div className="staff-selection-banner__main">
+                        <strong>{selectedOverride.id}</strong>
+                        <span>{selectedOverride.offeringId}</span>
+                      </div>
+                      <div className="staff-selection-banner__note">
+                        {selectedOverride.studentId} · {selectedOverride.active ? "Active" : "Inactive"}
+                      </div>
+                    </div>
+                    <div className="staff-context-grid">
+                      <div className="staff-context-card">
+                        <span className="staff-context-card__label">Student</span>
+                        <strong className="staff-context-card__value">{selectedOverride.studentId}</strong>
+                        <div className="staff-context-list">
+                          <span>{selectedOverride.offeringId}</span>
+                        </div>
+                      </div>
+                      <div className="staff-context-card">
+                        <span className="staff-context-card__label">Created by</span>
+                        <strong className="staff-context-card__value">{selectedOverride.createdBy ?? "Unknown actor"}</strong>
+                        <div className="staff-context-list">
+                          <span>{selectedOverride.createdAt ?? "Time unavailable"}</span>
+                        </div>
+                      </div>
+                      <div className="staff-context-card">
+                        <span className="staff-context-card__label">Constraint types</span>
+                        <strong className="staff-context-card__value">
+                          {selectedOverride.constraintTypes?.length ?? 0} selected
+                        </strong>
+                        <div className="staff-chip-list">
+                          {(selectedOverride.constraintTypes ?? []).map((constraintType) => {
+                            const option = OVERRIDE_OPTIONS.find((item) => item.id === constraintType);
+                            return (
+                              <span key={constraintType} className="staff-chip">
+                                {option?.label ?? constraintType}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="staff-context-card">
+                        <span className="staff-context-card__label">Office note</span>
+                        <strong className="staff-context-card__value">
+                          {selectedOverride.note ? "Note attached" : "No note attached"}
+                        </strong>
+                        <div className="staff-context-list">
+                          <span>{selectedOverride.note || "No note was recorded for this override."}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="staff-inline-note">Select an override to inspect its exact scope, note, and constraint types.</p>
+                )}
               </div>
             </section>
           </div>
@@ -1781,8 +2105,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       visibleAuditEvents.map((event) => (
                         <tr
                           key={event.id}
-                          className={event.id === selectedAuditId ? "portal-row portal-row--selected" : "portal-row"}
+                          className={getSelectableRowClass(event.id === selectedAuditId)}
                           onClick={() => setSelectedAuditId(event.id)}
+                          onKeyDown={(keyboardEvent) => handleSelectableRowKeyDown(keyboardEvent, () => setSelectedAuditId(event.id))}
+                          tabIndex={0}
+                          aria-selected={event.id === selectedAuditId}
                         >
                           <td>{event.timestamp}</td>
                           <td>{event.actorType}:{event.actorId}</td>
@@ -1806,6 +2133,24 @@ export function StaffAdminPage({ onReturnToPortal }) {
               <h3>Audit Event Detail</h3>
               {selectedAuditEvent ? (
                 <div className="staff-form-grid">
+                  <div className="staff-selection-banner">
+                    <div className="staff-selection-banner__eyebrow">Selected audit event</div>
+                    <div className="staff-selection-banner__main">
+                      <strong>{selectedAuditEvent.action}</strong>
+                      <span>{selectedAuditEvent.targetType}:{selectedAuditEvent.targetId}</span>
+                    </div>
+                    <div className="staff-selection-banner__note">
+                      {selectedAuditEvent.timestamp ?? "Timestamp unavailable"}
+                    </div>
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Event ID</label>
+                    <div>{selectedAuditEvent.id}</div>
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Timestamp</label>
+                    <div>{selectedAuditEvent.timestamp ?? "—"}</div>
+                  </div>
                   <div className="staff-form-row">
                     <label>Actor</label>
                     <div>{selectedAuditEvent.actorType}:{selectedAuditEvent.actorId}</div>

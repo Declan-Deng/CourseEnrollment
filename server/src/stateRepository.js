@@ -23,6 +23,11 @@ function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function getSeedStudentIds(seed) {
+  const seededIds = ensureArray(seed.seedStudentIds).filter((studentId) => typeof studentId === "string" && studentId.trim() !== "");
+  return seededIds.length > 0 ? seededIds : [seed.defaultStudentId];
+}
+
 function sortById(items) {
   return [...items].sort((left, right) => String(left.id ?? left._id ?? "").localeCompare(String(right.id ?? right._id ?? "")));
 }
@@ -67,8 +72,8 @@ class MemoryStateRepository {
     this.enrollments = new Map();
     this.requests = new Map();
     this.offerings = new Map(seed.offerings.map((offering) => [offering.id, clone(offering)]));
-    this.auditEvents = [];
-    this.overrides = [];
+    this.auditEvents = clone(seed.auditEvents ?? []);
+    this.overrides = clone(seed.seedOverrides ?? []);
 
     this.semesterRepository = {
       get: async () => clone(this.seed.semester),
@@ -154,11 +159,13 @@ class MemoryStateRepository {
       },
     };
 
-    const defaultState = createSeedStudentState(seed.defaultStudentId);
-    this.students.set(seed.defaultStudentId, defaultState.student);
-    this.studentMeta.set(seed.defaultStudentId, defaultState.studentMeta);
-    this.enrollments.set(seed.defaultStudentId, defaultState.enrollments);
-    this.requests.set(seed.defaultStudentId, defaultState.requests);
+    for (const studentId of getSeedStudentIds(seed)) {
+      const seedState = createSeedStudentState(studentId);
+      this.students.set(studentId, seedState.student);
+      this.studentMeta.set(studentId, seedState.studentMeta);
+      this.enrollments.set(studentId, seedState.enrollments);
+      this.requests.set(studentId, seedState.requests);
+    }
   }
 
   ensureStudent(studentId = this.seed.defaultStudentId) {
@@ -308,7 +315,7 @@ class MemoryStateRepository {
     this.studentMeta.set(studentId, seedState.studentMeta);
     this.enrollments.set(studentId, seedState.enrollments);
     this.requests.set(studentId, seedState.requests);
-    await this.resetOverridesForStudent(studentId);
+    await this.replaceOverridesForStudent(studentId, seedState.overrides);
     return this.getState(studentId);
   }
 
@@ -318,14 +325,16 @@ class MemoryStateRepository {
     this.enrollments = new Map();
     this.requests = new Map();
     this.offerings = new Map(this.seed.offerings.map((offering) => [offering.id, clone(offering)]));
-    this.auditEvents = [];
-    this.overrides = [];
+    this.auditEvents = clone(this.seed.auditEvents ?? []);
+    this.overrides = clone(this.seed.seedOverrides ?? []);
 
-    const defaultState = createSeedStudentState(this.seed.defaultStudentId);
-    this.students.set(this.seed.defaultStudentId, defaultState.student);
-    this.studentMeta.set(this.seed.defaultStudentId, defaultState.studentMeta);
-    this.enrollments.set(this.seed.defaultStudentId, defaultState.enrollments);
-    this.requests.set(this.seed.defaultStudentId, defaultState.requests);
+    for (const studentId of getSeedStudentIds(this.seed)) {
+      const seedState = createSeedStudentState(studentId);
+      this.students.set(studentId, seedState.student);
+      this.studentMeta.set(studentId, seedState.studentMeta);
+      this.enrollments.set(studentId, seedState.enrollments);
+      this.requests.set(studentId, seedState.requests);
+    }
 
     return this.getState(this.seed.defaultStudentId);
   }
@@ -468,7 +477,7 @@ class MongoStateRepository {
     };
 
     await this.ensureCatalogSeed();
-    await this.ensureStudentSeed(this.seed.defaultStudentId);
+    await this.ensureRuntimeSeed();
     return this;
   }
 
@@ -521,6 +530,28 @@ class MongoStateRepository {
       seedState.requests.map((item) => ({ ...item, _id: item.id })),
       { studentId },
     );
+  }
+
+  async ensureRuntimeSeed() {
+    for (const studentId of getSeedStudentIds(this.seed)) {
+      await this.ensureStudentSeed(studentId);
+    }
+
+    const hasOverrides = Boolean(await this.collections.constraintOverrides.findOne({}));
+    if (!hasOverrides) {
+      await this.replaceCollection(
+        this.collections.constraintOverrides,
+        ensureArray(this.seed.seedOverrides).map((item) => ({ ...item, _id: item.id })),
+      );
+    }
+
+    const hasAuditEvents = Boolean(await this.collections.auditEvents.findOne({}));
+    if (!hasAuditEvents) {
+      await this.replaceCollection(
+        this.collections.auditEvents,
+        ensureArray(this.seed.auditEvents).map((item) => ({ ...item, _id: item.id })),
+      );
+    }
   }
 
   async getState(studentId = this.seed.defaultStudentId) {
@@ -729,7 +760,7 @@ class MongoStateRepository {
       seedState.requests.map((item) => ({ ...item, _id: item.id })),
       { studentId },
     );
-    await this.resetOverridesForStudent(studentId);
+    await this.replaceOverridesForStudent(studentId, seedState.overrides);
     return this.getState(studentId);
   }
 
@@ -743,9 +774,17 @@ class MongoStateRepository {
     await this.collections.studentMeta.deleteMany({});
     await this.collections.enrollments.deleteMany({});
     await this.collections.requests.deleteMany({});
-    await this.collections.auditEvents.deleteMany({});
-    await this.collections.constraintOverrides.deleteMany({});
-    await this.ensureStudentSeed(this.seed.defaultStudentId);
+    await this.replaceCollection(
+      this.collections.auditEvents,
+      ensureArray(this.seed.auditEvents).map((item) => ({ ...item, _id: item.id })),
+    );
+    await this.replaceCollection(
+      this.collections.constraintOverrides,
+      ensureArray(this.seed.seedOverrides).map((item) => ({ ...item, _id: item.id })),
+    );
+    for (const studentId of getSeedStudentIds(this.seed)) {
+      await this.ensureStudentSeed(studentId);
+    }
     return this.getState(this.seed.defaultStudentId);
   }
 

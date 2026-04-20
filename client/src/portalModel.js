@@ -54,8 +54,8 @@ const ROW_CLASS_BY_STATE = {
 };
 const COURSE_GROUPS = [
   { id: "enrolled", label: "Enrolled", description: "Already admitted to your plan", defaultExpanded: true },
-  { id: "requestable", label: "Requestable", description: "Offerings you can act on now", defaultExpanded: true },
   { id: "active", label: "Active Requests", description: "Requests still being processed", defaultExpanded: true },
+  { id: "requestable", label: "Requestable", description: "Offerings you can act on now", defaultExpanded: true },
   { id: "blocked", label: "Blocked / Closed", description: "Unavailable under the current plan or window", defaultExpanded: false },
 ];
 const POLICY_DISPLAY_MAP = {
@@ -467,7 +467,11 @@ export function getCourseGroup(course) {
 
 export function getPrimaryAction(course) {
   if (course.currentState.kind === "approved") {
-    return { key: "drop", label: course.dropOpen ? "Drop" : "Locked", disabled: !course.dropOpen };
+    return {
+      key: "drop",
+      label: course.dropOpen ? "Drop" : course.allocationPolicy === "locked" ? "Manual drop" : "Drop closed",
+      disabled: !course.dropOpen,
+    };
   }
 
   if (isActiveRequestKind(course.currentState.kind)) {
@@ -723,16 +727,25 @@ export function buildInfoDialog(result, course) {
 }
 
 export function buildLockedDropDialog(course) {
+  const manualRoute = course.allocationPolicy === "locked";
+
   return {
     title: `${course.code} - ${course.title}`,
-    headline: "Drop is not available online for this course.",
+    headline: manualRoute ? "Manual drop route required for this course." : "Drop period closed for this course.",
     meta: [course.faculty, course.listType, course.policyLabel, course.dropNote],
     windowNote: course.dropNote,
-    reasons: [
-      "This approved course is locked for manual handling by the programme office.",
-      course.dropNote,
-    ],
-    suggestedAction: "Use the displayed support route instead of the online drop flow.",
+    reasons: manualRoute
+      ? [
+          "This approved course is locked for manual handling by the programme office.",
+          course.dropNote,
+        ]
+      : [
+          "This course follows the shared add/drop deadline and is currently outside the active online drop window.",
+          course.dropNote,
+        ],
+    suggestedAction: manualRoute
+      ? "Use the displayed support route instead of the online drop flow."
+      : "Wait for the next add/drop period or contact the faculty office for exceptional handling.",
   };
 }
 

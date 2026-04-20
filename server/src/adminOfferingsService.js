@@ -59,6 +59,51 @@ function validateOfferingState(offering) {
   }
 }
 
+function hashOfferingId(value) {
+  return [...String(value ?? "")].reduce((total, char, index) => total + char.charCodeAt(0) * (index + 17), 0);
+}
+
+function buildGeneratedSeatOccupants(offeringId, count, trackedCount) {
+  const seed = hashOfferingId(offeringId);
+
+  return Array.from({ length: count }, (_, index) => {
+    const position = trackedCount + index + 1;
+    const studentSuffix = String((seed * 97 + position * 137) % 1_000_000).padStart(6, "0");
+    const day = String(((seed + position * 3) % 19) + 1).padStart(2, "0");
+    const hour = String(9 + ((seed + position) % 9)).padStart(2, "0");
+    const minute = ((seed + position) % 2) * 30;
+
+    return {
+      studentId: `3036${studentSuffix}`,
+      enrolledAt: `2026-01-${day} ${hour}:${String(minute).padStart(2, "0")}`,
+      source: "faculty-record",
+      enrollmentId: `demo-enr-${offeringId}-${position}`,
+      synthetic: true,
+    };
+  });
+}
+
+function buildSeatOccupants(snapshot, offering) {
+  const trackedOccupants = snapshot.enrollments
+    .filter((enrollment) => enrollment.offeringId === offering.id && enrollment.status === "approved")
+    .sort((left, right) => String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? "")) || left.studentId.localeCompare(right.studentId))
+    .map((enrollment) => ({
+      studentId: enrollment.studentId,
+      enrolledAt: enrollment.createdAt ?? null,
+      source: enrollment.source ?? "unknown",
+      enrollmentId: enrollment.id,
+      synthetic: false,
+    }));
+
+  const generatedCount = Math.max((offering?.seatsTaken ?? 0) - trackedOccupants.length, 0);
+
+  return {
+    occupants: [...trackedOccupants, ...buildGeneratedSeatOccupants(offering.id, generatedCount, trackedOccupants.length)],
+    trackedCount: trackedOccupants.length,
+    generatedCount,
+  };
+}
+
 export function listAdminOfferings(snapshot) {
   return snapshot.offerings.map((offering) => ({
     ...offering,
@@ -131,6 +176,7 @@ export function previewOfferingUpdate(snapshot, offeringId, patch) {
   const nextOffering = previewSnapshot.offerings.find((item) => item.id === offeringId);
   const afterAvailable = Math.max(nextOffering.capacity - nextOffering.seatsTaken, 0);
   const affectedRequests = snapshot.requests.filter((request) => request.active && request.offeringId === offeringId).length;
+  const seatOccupantView = buildSeatOccupants(snapshot, offering);
 
   return {
     ok: true,
@@ -146,6 +192,12 @@ export function previewOfferingUpdate(snapshot, offeringId, patch) {
       affectedActiveRequests: affectedRequests,
       requestWindowClosingNow: Boolean(offering.requestWindow?.isOpen && !nextOffering.requestWindow?.isOpen),
       dropWindowClosingNow: Boolean(offering.dropWindow?.isOpen && !nextOffering.dropWindow?.isOpen),
+    },
+    seatOccupants: seatOccupantView.occupants,
+    seatOccupantSummary: {
+      totalCount: seatOccupantView.occupants.length,
+      trackedCount: seatOccupantView.trackedCount,
+      generatedCount: seatOccupantView.generatedCount,
     },
   };
 }

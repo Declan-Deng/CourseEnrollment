@@ -128,6 +128,21 @@ async function getStateContext(options = {}) {
   };
 }
 
+async function buildAdminAggregateState(activeRepository) {
+  const studentIds = await activeRepository.listStudentIds();
+  const effectiveStudentIds =
+    studentIds.length > 0 ? studentIds : [activeRepository.seed?.defaultStudentId ?? createSeedDomainSnapshot().student.id];
+  const snapshots = await Promise.all(effectiveStudentIds.map((studentId) => activeRepository.getState(studentId)));
+  const baseSnapshot = snapshots[0] ?? createSeedDomainSnapshot();
+
+  return {
+    ...baseSnapshot,
+    enrollments: snapshots.flatMap((snapshot) => snapshot.enrollments ?? []),
+    requests: snapshots.flatMap((snapshot) => snapshot.requests ?? []),
+    overrides: snapshots.flatMap((snapshot) => snapshot.overrides ?? []),
+  };
+}
+
 async function saveStateWithRetry(mutator, options = {}, attempts = 3) {
   const studentId = resolveStudentId(options);
 
@@ -330,8 +345,9 @@ export async function resetDemo(options = {}) {
 }
 
 export async function listAdminOfferingView(options = {}) {
-  const { state } = await getStateContext(options);
-  return listAdminOfferings(state);
+  const activeRepository = await getRepository();
+  const aggregateState = await buildAdminAggregateState(activeRepository);
+  return listAdminOfferings(aggregateState);
 }
 
 export async function updateAdminOffering(offeringId, patch, options = {}) {
@@ -355,8 +371,9 @@ export async function updateAdminOffering(offeringId, patch, options = {}) {
 }
 
 export async function previewAdminOfferingImpact(offeringId, patch, options = {}) {
-  const { state } = await getStateContext(options);
-  return previewOfferingUpdate(state, offeringId, patch);
+  const activeRepository = await getRepository();
+  const aggregateState = await buildAdminAggregateState(activeRepository);
+  return previewOfferingUpdate(aggregateState, offeringId, patch);
 }
 
 export async function listAdminRequestView(options = {}) {

@@ -195,12 +195,22 @@ export function dropStudentEnrollment(snapshot, offeringId, { actor } = {}) {
   const offering = getOfferingMutable(nextSnapshot, offeringId);
 
   if (!offering?.dropWindow?.isOpen) {
+    const isManualLock = offering?.allocationPolicy === "locked";
+
     return {
       snapshot,
-      decision: createRejectedAction("Drop period closed for this course.", [
-        "The programme office locked this record for manual handling.",
-        `Next relevant date: ${nextSnapshot.semester.keyDates?.resultCheckWindow ?? "record review window"}.`,
-      ]),
+      decision: createRejectedAction(
+        isManualLock ? "Manual drop route required for this course." : "Drop period closed for this course.",
+        isManualLock
+          ? [
+              "The programme office locked this record for manual handling.",
+              `Next relevant date: ${nextSnapshot.semester.keyDates?.resultCheckWindow ?? "record review window"}.`,
+            ]
+          : [
+              `Online add/drop closed on ${nextSnapshot.semester.keyDates?.addDropClose ?? "the add/drop deadline"}.`,
+              `Contact ${nextSnapshot.semester.keyDates?.supportContact ?? "the programme office"} if an exceptional manual change is needed.`,
+            ],
+      ),
     };
   }
 

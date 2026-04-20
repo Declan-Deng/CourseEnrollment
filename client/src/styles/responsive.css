@@ -143,6 +143,7 @@
   }
 
   .announcement-highlights,
+  .staff-context-grid,
   .staff-impact-grid--compact,
   .danger-zone {
     grid-template-columns: 1fr;

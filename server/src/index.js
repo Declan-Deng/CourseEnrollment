@@ -293,7 +293,7 @@ app.use((_request, response) => {
   });
 });
 
-export async function startServer({ port = PORT, storageOptions } = {}) {
+export async function startServer({ port = PORT, storageOptions, attachSignalHandlers = true } = {}) {
   const storageInfo = await initDataStore(storageOptions);
 
   const server = await new Promise((resolve) => {
@@ -308,12 +308,22 @@ export async function startServer({ port = PORT, storageOptions } = {}) {
   });
 
   const shutdown = async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => {
+      server.close(resolve);
+      server.closeIdleConnections?.();
+      server.closeAllConnections?.();
+    });
     await closeDataStore();
+    if (attachSignalHandlers) {
+      process.off("SIGINT", shutdown);
+      process.off("SIGTERM", shutdown);
+    }
   };
 
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
+  if (attachSignalHandlers) {
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }
 
   return { server, shutdown, storageInfo };
 }

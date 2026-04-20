@@ -75,6 +75,14 @@ export function formatStaffTimestamp(value) {
   return `Updated ${STAFF_TIME_FORMATTER.format(parsed)}`;
 }
 
+export function formatSeatOccupantTimestamp(value) {
+  if (!value) {
+    return "Time unavailable";
+  }
+
+  return `Confirmed ${value}`;
+}
+
 export function compactJson(value) {
   if (value === null || value === undefined) {
     return "—";
@@ -206,6 +214,21 @@ export function formatResolutionActionLabel(action) {
       return "Manual close";
     default:
       return action;
+  }
+}
+
+export function formatEnrollmentSource(source) {
+  switch (source) {
+    case "student-request":
+      return "Student request";
+    case "staff-resolution":
+      return "Staff approval";
+    case "seed":
+      return "Seeded enrolment";
+    case "faculty-record":
+      return "Faculty record";
+    default:
+      return source ?? "Unknown";
   }
 }
 

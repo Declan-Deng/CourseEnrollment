@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createSeedDomainSnapshot, createSeedStudentState } from "../src/domainSeed.js";
 import { createStateRepository, RepositoryConflictError } from "../src/stateRepository.js";
 
 async function runRepositoryContract(repository) {
@@ -86,7 +87,7 @@ async function runRepositoryContract(repository) {
   await repository.reset("4000000001");
   const otherStudentRequests = await repository.requestRepository.listByStudentId("4000000001");
   const defaultStudentRequests = await repository.requestRepository.listByStudentId(repository.seed.defaultStudentId);
-  assert.equal(otherStudentRequests.length, 0);
+  assert.equal(otherStudentRequests.length, createSeedStudentState("4000000001").requests.length);
   assert.ok(defaultStudentRequests.length > 0);
 
   await repository.overrideRepository.resetForStudent(repository.seed.defaultStudentId);
@@ -103,25 +104,29 @@ test("memory repository exposes consistent entity operations", async () => {
     await runRepositoryContract(repository);
     await repository.resetAll();
     const stateAfterReset = await repository.getState(repository.seed.defaultStudentId);
-    assert.equal(stateAfterReset.auditEvents.length, 0);
+    assert.equal(stateAfterReset.auditEvents.length, createSeedDomainSnapshot().auditEvents.length);
   } finally {
     await repository.close?.();
   }
 });
 
-const mongoTest = process.env.TEST_MONGODB_URI ? test : test.skip;
+test(
+  "mongo repository matches the entity repository contract",
+  {
+    skip: !process.env.TEST_MONGODB_URI,
+  },
+  async () => {
+    const repository = await createStateRepository({
+      storageMode: "mongo",
+      mongoUri: process.env.TEST_MONGODB_URI,
+      dbName: process.env.TEST_MONGODB_DB_NAME ?? "course_enrollment_prototype_test",
+      collectionName: `runtime_state_contract_${Date.now()}`,
+    });
 
-mongoTest("mongo repository matches the entity repository contract", async () => {
-  const repository = await createStateRepository({
-    storageMode: "mongo",
-    mongoUri: process.env.TEST_MONGODB_URI,
-    dbName: process.env.TEST_MONGODB_DB_NAME ?? "course_enrollment_prototype_test",
-    collectionName: `runtime_state_contract_${Date.now()}`,
-  });
-
-  try {
-    await runRepositoryContract(repository);
-  } finally {
-    await repository.close?.();
-  }
-});
+    try {
+      await runRepositoryContract(repository);
+    } finally {
+      await repository.close?.();
+    }
+  },
+);
