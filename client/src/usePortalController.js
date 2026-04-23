@@ -500,7 +500,7 @@ export function usePortalController() {
     setBanner({
       tone: "success",
       title: "Session reset.",
-      detail: "All enrolment, cancellation, and drop changes were restored to the default starting state.",
+      detail: "All enrolment, withdrawal, and drop changes were restored to the default starting state.",
     });
     showStatusToast({
       tone: "info",

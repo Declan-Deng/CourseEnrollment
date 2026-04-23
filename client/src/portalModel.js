@@ -60,15 +60,15 @@ const ROW_CLASS_BY_STATE = {
   waitlist: "portal-row--waitlist",
 };
 const COURSE_GROUPS = [
-  { id: "active", label: "Active Requests", description: "Requests still being processed", defaultExpanded: true },
   { id: "requestable", label: "Requestable", description: "Offerings you can act on now", defaultExpanded: true },
+  { id: "active", label: "Active Requests", description: "Requests still being processed", defaultExpanded: true },
   { id: "enrolled", label: "Enrolled", description: "Already admitted to your plan", defaultExpanded: false },
   { id: "blocked", label: "Blocked / Closed", description: "Unavailable under the current plan or window", defaultExpanded: false },
 ];
 const POLICY_DISPLAY_MAP = {
-  firstComeFirstServed: { label: "FCFS", note: "Open online", variant: "fcfs" },
-  lottery: { label: "Lottery", note: "Open pool", variant: "lottery" },
-  priorityReview: { label: "Faculty review", note: "Faculty queue", variant: "review" },
+  firstComeFirstServed: { label: "FCFS", note: "Instant approval", variant: "fcfs" },
+  lottery: { label: "Lottery", note: "Pool open", variant: "lottery" },
+  priorityReview: { label: "Faculty review", note: "Queue open", variant: "review" },
   locked: { label: "Closed", note: "Manual route", variant: "closed" },
 };
 const COURSE_CODE_PATTERN = /\b[A-Z]{4}\d{4}\b/g;
@@ -336,7 +336,7 @@ function getPolicySortTuple(course) {
   const sortOrder = {
     FCFS: 0,
     Lottery: 1,
-    Review: 2,
+    "Faculty review": 2,
     Closed: 3,
   };
 
@@ -623,7 +623,7 @@ export function getRuleSummary(course) {
     if (course.preview.uiVariant === "lottery") {
       summary = {
         variant: "lottery",
-        conclusion: "Lottery allocation",
+        conclusion: "Lottery route",
         reasonText: "This offering is allocated through a lottery pool rather than instant approval.",
         nextText: "Use the Request button to enter the lottery pool before the deadline.",
         linkedCourseCode: null,
@@ -631,7 +631,7 @@ export function getRuleSummary(course) {
     } else if (course.preview.uiVariant === "review") {
       summary = {
         variant: "review",
-        conclusion: "Faculty review",
+        conclusion: "Faculty review route",
         reasonText: "This offering is processed through faculty review instead of instant approval.",
         nextText: "Use the Request button to enter the faculty review queue.",
         linkedCourseCode: null,

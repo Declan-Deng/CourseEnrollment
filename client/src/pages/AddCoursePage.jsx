@@ -286,7 +286,9 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
       <span>
         {selectedSummary?.variant === "clash"
           ? selectedSummary.reasonText
-          : `Open the weekly grid to compare this offering with ${Math.max(visibleCount - 1, 0)} planned class block(s).`}
+          : `Open the weekly grid to compare this offering with ${Math.max(visibleCount - 1, 0)} planned class ${
+              Math.max(visibleCount - 1, 0) === 1 ? "block" : "blocks"
+            }.`}
       </span>
     </div>
   ) : (
@@ -754,9 +756,9 @@ const CourseTableRow = memo(function CourseTableRow({
             type="button"
             className="course-title-button__inspect"
             onClick={() => onInspect(course.id)}
-            aria-label={`View details for ${course.code}`}
+            aria-label={`Open inspection panel for ${course.code}`}
           >
-            Details
+            Inspect
           </button>
         </div>
       </td>

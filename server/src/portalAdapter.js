@@ -35,15 +35,15 @@ function getCapacityView(offering) {
 
   if (offering.allocationPolicy === "lottery") {
     return {
-      primary: `${demandBand} lottery pool`,
-      secondary: `${offering.seatsTaken}/${offering.capacity} seats claimed before draw`,
+      primary: demandBand,
+      secondary: `Lottery pool · ${offering.seatsTaken}/${offering.capacity} seats claimed before draw`,
     };
   }
 
   if (offering.allocationPolicy === "priorityReview") {
     return {
-      primary: `${demandBand} review queue`,
-      secondary: "Faculty review allocation",
+      primary: demandBand,
+      secondary: "Faculty review queue",
     };
   }
 
