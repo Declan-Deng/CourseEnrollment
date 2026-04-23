@@ -2,6 +2,11 @@ import { getPolicyLabel } from "./constraints.js";
 import { getCatalogOffering, getStudentPlanningOfferings } from "./catalogService.js";
 import { previewEnrollmentDecision, summarizeOfferingState } from "./enrollmentDecisionService.js";
 import { buildRequestStatusView, createRequestRecordView } from "./requestTrackingService.js";
+import { formatIsoDate, getReferenceDate, toIsoDate } from "./windowDates.js";
+
+function formatCountLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 function getDemandBand(offering) {
   const ratio = offering.capacity === 0 ? 0 : offering.seatsTaken / offering.capacity;
@@ -23,7 +28,7 @@ function getCapacityView(offering) {
 
   if (offering.allocationPolicy === "firstComeFirstServed") {
     return {
-      primary: `${seatsRemaining} seat(s) left`,
+      primary: `${formatCountLabel(seatsRemaining, "seat")} left`,
       secondary: `${offering.waitlistCount} waiting`,
     };
   }
@@ -50,7 +55,7 @@ function getCapacityView(offering) {
 
 function getRequestNote(offering, semester) {
   if (offering.requestWindow?.isOpen) {
-    return `Request window open until ${offering.requestWindow?.closesOn ?? semester.keyDates?.requestClose ?? "the deadline"}.`;
+    return `Request window open until ${formatIsoDate(offering.requestWindow?.closesOn ?? semester.keyDates?.requestClose ?? "the deadline")}.`;
   }
 
   return `Request closed. Check final records during ${semester.keyDates?.resultCheckWindow ?? "the final record review window"}.`;
@@ -58,34 +63,45 @@ function getRequestNote(offering, semester) {
 
 function getDropNote(offering, semester) {
   if (offering.dropWindow?.isOpen) {
-    return `Online add/drop available until ${offering.dropWindow?.closesOn ?? semester.keyDates?.addDropClose ?? "the deadline"}.`;
+    return `Online add/drop available until ${formatIsoDate(offering.dropWindow?.closesOn ?? semester.keyDates?.addDropClose ?? "the deadline")}.`;
   }
 
   return `Online add/drop is not available now. Contact ${semester.keyDates?.supportContact ?? "the programme office"}.`;
 }
 
-function buildStudentActionSummary({ approvedCourses, activeRequestRecords, plannedCredits, creditLimit, semester, requestStatusView }) {
-  const nextDeadline = activeRequestRecords.length > 0
+function buildStudentActionSummary({
+  approvedCourses,
+  activeRequestRecords,
+  withdrawableRequests,
+  plannedCredits,
+  confirmedCredits,
+  creditLimit,
+  semester,
+  requestStatusView,
+}) {
+  const nextDeadline = withdrawableRequests.length > 0
     ? semester?.keyDates?.requestClose ?? null
     : semester?.keyDates?.resultCheckWindow ?? semester?.keyDates?.requestClose ?? null;
   const primaryAction = activeRequestRecords.length > 0
     ? {
-        label: "Review requests",
-        page: "cancel",
+        label: withdrawableRequests.length > 0 ? "Manage active requests" : "View enrolment results",
+        page: withdrawableRequests.length > 0 ? "cancel" : "results",
       }
     : approvedCourses.length > 0
       ? {
-          label: "View results",
+          label: "View enrolment results",
           page: "results",
         }
       : {
-          label: "Open Course Center",
+          label: "Course Center",
           page: "add",
         };
 
   return {
     enrolledCount: approvedCourses.length,
     activeRequestCount: activeRequestRecords.length,
+    confirmedCredits,
+    activeRequestCredits: Math.max(plannedCredits - confirmedCredits, 0),
     plannedCredits,
     nextDeadline,
     urgentActions: requestStatusView?.nextAction?.actions ?? [],
@@ -108,14 +124,24 @@ function buildAnnouncementContent(semester) {
     return null;
   }
 
-  if (!Array.isArray(content.highlights) || content.highlights.length === 0) {
-    content.highlights = [
-      { label: "Selection window", value: content.selectionSchedule?.[1]?.[0] ?? semester?.keyDates?.requestClose ?? "Selection period" },
-      { label: "Add / Drop deadline", value: semester?.keyDates?.addDropClose ?? "Not available" },
-      { label: "Result check", value: semester?.keyDates?.resultCheckWindow ?? "Not available" },
-      { label: "Maintenance", value: content.maintenanceNotice ?? "No maintenance notice" },
-    ];
-  }
+  const now = getReferenceDate(semester?.currentDate);
+  const requestClose = semester?.keyDates?.requestClose ?? null;
+  const addDropClose = semester?.keyDates?.addDropClose ?? null;
+  const resultCheckWindow = semester?.keyDates?.resultCheckWindow ?? null;
+  const requestClosed =
+    Boolean(requestClose) && new Date(`${toIsoDate(requestClose)}T23:59:59`).getTime() < now.getTime();
+  const addDropClosed =
+    Boolean(addDropClose) && new Date(`${toIsoDate(addDropClose)}T23:59:59`).getTime() < now.getTime();
+
+  content.highlights = [
+    {
+      label: "Current cycle",
+      value: requestClosed && addDropClosed ? "Semester 2 online enrolment cycle completed" : "Semester 2 online enrolment currently active",
+    },
+    { label: "Request deadline", value: requestClose ?? "Not available" },
+    { label: "Add / Drop deadline", value: addDropClose ?? "Not available" },
+    { label: "Record check", value: resultCheckWindow ?? "Not available" },
+  ];
 
   return content;
 }
@@ -176,8 +202,11 @@ export function buildBootstrapResponse(snapshot) {
       );
     })
     .filter(Boolean);
-  const activeRequestRecords = requestRecords.filter((record) => record.active);
   const { approvedOfferings, activeRequestOfferings } = getStudentPlanningOfferings(snapshot);
+  const activeRequestRecords = requestRecords.filter((record) => record.active);
+  const confirmedCredits = approvedOfferings
+    .filter((course) => course.credits > 0 && course.listType !== "Diss")
+    .reduce((total, course) => total + course.credits, 0);
   const plannedCredits = [...approvedOfferings, ...activeRequestOfferings]
     .filter((course) => course.credits > 0 && course.listType !== "Diss")
     .reduce((total, course) => total + course.credits, 0);
@@ -192,7 +221,9 @@ export function buildBootstrapResponse(snapshot) {
   const studentActionSummary = buildStudentActionSummary({
     approvedCourses,
     activeRequestRecords,
+    withdrawableRequests: requestStatusView.withdrawableRequests,
     plannedCredits,
+    confirmedCredits,
     creditLimit: snapshot.rules?.semesterStudyLoadLimit ?? snapshot.student.semesterStudyLoadLimit,
     semester: snapshot.semester,
     requestStatusView,
@@ -201,6 +232,7 @@ export function buildBootstrapResponse(snapshot) {
   return {
     meta: {
       fetchedAt: new Date().toISOString(),
+      currentDate: snapshot.semester?.currentDate ?? null,
     },
     semester: snapshot.semester,
     student: snapshot.student,
@@ -221,6 +253,7 @@ export function buildBootstrapResponse(snapshot) {
         supportContact: snapshot.semester.keyDates?.supportContact ?? null,
       },
       studentActionSummary,
+      confirmedCredits,
     },
     courses: catalogOfferings,
     approvedCourses,

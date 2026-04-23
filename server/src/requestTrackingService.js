@@ -19,15 +19,23 @@ export function formatRecordTimestamp(date = new Date()) {
 }
 
 function getRequestNextStep(status, semester, course) {
+  const requestDeadline = semester.keyDates?.requestClose ?? "the request deadline";
+  const resultCheckWindow = semester.keyDates?.resultCheckWindow ?? "the final records window";
+
   const nextStepByStatus = {
     approved: () =>
-      `Course is now in your enrolled list. Check final records during ${semester.keyDates?.resultCheckWindow ?? "the confirmation window"}.`,
+      `Course is now in your enrolled list. Check final records during ${resultCheckWindow}.`,
     lotteryQueued: () =>
-      `Wait for the lottery outcome after ${semester.keyDates?.lotteryPublish ?? "the draw window"} and keep an alternative ready.`,
+      course.requestOpen
+        ? `Wait for the lottery outcome after ${semester.keyDates?.lotteryPublish ?? "the draw window"} and keep an alternative ready.`
+        : `This request is still being processed. The online withdrawal window has closed; check ${resultCheckWindow}.`,
     pendingReview: () => "Wait for faculty review and monitor messages before changing your plan.",
-    waitlist: () => `Keep a backup option ready before ${semester.keyDates?.requestClose ?? "the add/drop deadline"}.`,
+    waitlist: () =>
+      course.requestOpen
+        ? `Keep a backup option ready before ${requestDeadline}.`
+        : `This waitlist request remains on record. Online withdrawal has closed; review it again during ${resultCheckWindow}.`,
     cancelled: () =>
-      `Submit an alternative before ${semester.keyDates?.requestClose ?? "the deadline"} if you still need credits.`,
+      `Submit an alternative before ${requestDeadline} if you still need credits.`,
     dropped: () => "Review your current credit load and submit a replacement if needed.",
     rejected: () => "Review the reason and adjust your plan before trying again.",
     manuallyResolved: () => "The programme office updated this request. Check your latest records again.",
@@ -41,12 +49,14 @@ export function createRequestRecordView(request, course, semester) {
     ...request,
     course,
     statusLabel: getRecordStatusLabel(request.status),
+    withdrawable: Boolean(course.requestOpen) && request.active,
     nextStep: getRequestNextStep(request.status, semester, course),
   };
 }
 
 export function buildRequestStatusView({ approvedCourses = [], requestRecords = [], semester, creditLimit, plannedCredits }) {
   const activeRequests = requestRecords.filter((record) => record.active);
+  const withdrawableRequests = activeRequests.filter((record) => record.withdrawable);
   const archivedChanges = requestRecords.filter((record) => !record.active);
   const actions = [];
 
@@ -54,10 +64,26 @@ export function buildRequestStatusView({ approvedCourses = [], requestRecords = 
   let detail = "Your enrolled courses, requests in progress, and archived changes are separated here so you can review everything in one place.";
 
   if (activeRequests.length > 0) {
-    headline = `${activeRequests.length} active request${activeRequests.length === 1 ? "" : "s"} still need attention.`;
-    detail = `Watch this section before ${semester?.keyDates?.requestClose ?? "the request deadline"} and use Cancel only if you want to withdraw a request that is still in progress.`;
-    actions.push("Monitor each active request before the request deadline.");
-    actions.push("Use Cancel only if you want to withdraw a request still in progress.");
+    headline =
+      activeRequests.length === 1
+        ? "1 active request still needs attention."
+        : `${activeRequests.length} active requests still need attention.`;
+    if (withdrawableRequests.length > 0) {
+      detail =
+        activeRequests.length === 1
+          ? `Review this request before ${semester?.keyDates?.requestClose ?? "the request deadline"}.`
+          : `Review these requests before ${semester?.keyDates?.requestClose ?? "the request deadline"}.`;
+      actions.push(
+        activeRequests.length === 1
+          ? "Monitor this active request before the request deadline."
+          : "Monitor each active request before the request deadline.",
+      );
+      actions.push("Withdraw only the requests you no longer want to keep active.");
+    } else {
+      detail = `These requests remain in progress, but the online withdrawal window has closed. Check ${semester?.keyDates?.resultCheckWindow ?? "the final records window"} for updates instead.`;
+      actions.push("Monitor these requests until the final records window.");
+      actions.push("Contact the Faculty Office if a manual change is still required.");
+    }
   } else if (approvedCourses.length > 0) {
     headline = "Your current enrolment is settled for now.";
     detail = `Your enrolled courses are shown below. Check the final record window during ${semester?.keyDates?.resultCheckWindow ?? "the confirmation period"} if anything still needs attention.`;
@@ -75,6 +101,7 @@ export function buildRequestStatusView({ approvedCourses = [], requestRecords = 
   return {
     currentEnrolment: approvedCourses,
     activeRequests,
+    withdrawableRequests,
     archivedChanges,
     nextAction: {
       headline,

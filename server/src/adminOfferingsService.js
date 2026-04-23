@@ -1,6 +1,7 @@
 import { createAuditEvent } from "./auditService.js";
 import { clone } from "./clone.js";
 import { badRequest, notFound, conflict } from "./domainErrors.js";
+import { toIsoDate } from "./windowDates.js";
 
 const ALLOWED_PATCH_KEYS = new Set([
   "capacity",
@@ -16,6 +17,212 @@ const ALLOWED_POLICIES = new Set([
   "priorityReview",
   "locked",
 ]);
+const ALLOWED_LIST_TYPES = new Set([
+  "DscpA",
+  "DscpB",
+  "ElectXC",
+  "Elective",
+  "Diss",
+]);
+const ALLOWED_SCHEDULE_DAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+
+function slugify(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function normalizeCourseCode(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function normalizeSubclass(value) {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+function normalizePlainText(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeCodeList(values) {
+  if (Array.isArray(values)) {
+    return [...new Set(values.map(normalizeCourseCode).filter(Boolean))];
+  }
+
+  if (typeof values === "string") {
+    return [...new Set(values.split(",").map(normalizeCourseCode).filter(Boolean))];
+  }
+
+  return [];
+}
+
+function validateTimeLabel(value, fieldLabel) {
+  if (!/^\d{2}:\d{2}$/.test(String(value ?? ""))) {
+    throw badRequest("Invalid offering payload.", `${fieldLabel} must use HH:MM format.`);
+  }
+}
+
+function validateCoursePayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw badRequest("Invalid course payload.", "Course payload must be an object.");
+  }
+
+  const code = normalizeCourseCode(payload.code);
+  if (!code) {
+    throw badRequest("Invalid course payload.", "Course code is required.");
+  }
+
+  const title = normalizePlainText(payload.title);
+  const faculty = normalizePlainText(payload.faculty);
+  const department = normalizePlainText(payload.department);
+  if (!title || !faculty || !department) {
+    throw badRequest("Invalid course payload.", "Title, faculty, and department are required.");
+  }
+
+  if (!ALLOWED_LIST_TYPES.has(payload.listType)) {
+    throw badRequest("Invalid course payload.", `Unsupported list type: ${payload.listType}`);
+  }
+
+  if (!Number.isInteger(payload.credits) || payload.credits < 0) {
+    throw badRequest("Invalid course payload.", "credits must be a non-negative integer.");
+  }
+
+  if (payload.crossFaculty !== undefined && typeof payload.crossFaculty !== "boolean") {
+    throw badRequest("Invalid course payload.", "crossFaculty must be a boolean.");
+  }
+}
+
+function normalizeCoursePayload(payload) {
+  return {
+    id: normalizeCourseCode(payload.code),
+    code: normalizeCourseCode(payload.code),
+    title: normalizePlainText(payload.title),
+    faculty: normalizePlainText(payload.faculty),
+    department: normalizePlainText(payload.department),
+    listType: payload.listType,
+    credits: payload.credits,
+    crossFaculty: Boolean(payload.crossFaculty),
+    synopsis: normalizePlainText(payload.synopsis),
+  };
+}
+
+function buildDepartmentRecord(course) {
+  return {
+    id: slugify(`${course.faculty}-${course.department}`),
+    faculty: course.faculty,
+    name: course.department,
+  };
+}
+
+function validateSchedule(schedule) {
+  if (!Array.isArray(schedule) || schedule.length === 0) {
+    throw badRequest("Invalid offering payload.", "At least one teaching slot is required.");
+  }
+
+  for (const [index, slot] of schedule.entries()) {
+    if (!slot || typeof slot !== "object" || Array.isArray(slot)) {
+      throw badRequest("Invalid offering payload.", `Schedule slot ${index + 1} must be an object.`);
+    }
+
+    if (!ALLOWED_SCHEDULE_DAYS.has(slot.day)) {
+      throw badRequest("Invalid offering payload.", `Schedule slot ${index + 1} must use a supported day.`);
+    }
+
+    validateTimeLabel(slot.start, `Schedule slot ${index + 1} start`);
+    validateTimeLabel(slot.end, `Schedule slot ${index + 1} end`);
+  }
+}
+
+function normalizeWindowForCreate(windowValue, defaultDate) {
+  return {
+    isOpen: windowValue?.isOpen ?? true,
+    closesOn: toIsoDate(windowValue?.closesOn) ?? defaultDate,
+  };
+}
+
+function buildOfferingId(courseCode, subclass, semester) {
+  return `${courseCode}-${subclass}-S${semester}`;
+}
+
+function validateOfferingCreatePayload(snapshot, payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw badRequest("Invalid offering payload.", "Offering payload must be an object.");
+  }
+
+  const courseCode = normalizeCourseCode(payload.courseCode);
+  if (!courseCode) {
+    throw badRequest("Invalid offering payload.", "courseCode is required.");
+  }
+
+  if (!snapshot.courses.some((course) => course.code === courseCode)) {
+    throw notFound("Course not found.", `Course ${courseCode} was not found.`);
+  }
+
+  if (!Number.isInteger(payload.semester) || payload.semester < 1) {
+    throw badRequest("Invalid offering payload.", "semester must be a positive integer.");
+  }
+
+  const subclass = normalizeSubclass(payload.subclass);
+  if (!subclass) {
+    throw badRequest("Invalid offering payload.", "subclass is required.");
+  }
+
+  if (!ALLOWED_POLICIES.has(payload.allocationPolicy)) {
+    throw badRequest("Invalid offering payload.", `Unsupported allocation policy: ${payload.allocationPolicy}`);
+  }
+
+  if (!Number.isInteger(payload.capacity) || payload.capacity < 0) {
+    throw badRequest("Invalid offering payload.", "capacity must be a non-negative integer.");
+  }
+
+  validateSchedule(payload.schedule);
+
+  for (const windowField of ["requestWindow", "dropWindow"]) {
+    const windowValue = payload[windowField];
+    if (windowValue !== undefined && (typeof windowValue !== "object" || Array.isArray(windowValue))) {
+      throw badRequest("Invalid offering payload.", `${windowField} must be an object.`);
+    }
+
+    if (windowValue?.isOpen !== undefined && typeof windowValue.isOpen !== "boolean") {
+      throw badRequest("Invalid offering payload.", `${windowField}.isOpen must be a boolean.`);
+    }
+
+    if (windowValue?.closesOn !== undefined && windowValue.closesOn !== null && !toIsoDate(windowValue.closesOn)) {
+      throw badRequest("Invalid offering payload.", `${windowField}.closesOn must be a valid date.`);
+    }
+  }
+}
+
+function normalizeOfferingPayload(snapshot, payload) {
+  const courseCode = normalizeCourseCode(payload.courseCode);
+  const subclass = normalizeSubclass(payload.subclass);
+  const semester = payload.semester;
+  const offeringId = normalizePlainText(payload.id) || buildOfferingId(courseCode, subclass, semester);
+
+  return {
+    id: offeringId,
+    courseCode,
+    semester,
+    subclass,
+    allocationPolicy: payload.allocationPolicy,
+    requestWindow: normalizeWindowForCreate(payload.requestWindow, toIsoDate(snapshot.semester.keyDates?.requestClose)),
+    dropWindow: normalizeWindowForCreate(payload.dropWindow, toIsoDate(snapshot.semester.keyDates?.addDropClose)),
+    capacity: payload.capacity,
+    seatsTaken: 0,
+    waitlistCount: 0,
+    schedule: payload.schedule.map((slot) => ({
+      day: slot.day,
+      start: slot.start,
+      end: slot.end,
+      venue: normalizePlainText(slot.venue),
+    })),
+    prerequisites: normalizeCodeList(payload.prerequisites),
+    corequisites: normalizeCodeList(payload.corequisites),
+    version: 1,
+  };
+}
 
 function validateOfferingPatch(patch) {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) {
@@ -42,11 +249,41 @@ function validateOfferingPatch(patch) {
     if (patch[windowField]?.isOpen !== undefined && typeof patch[windowField].isOpen !== "boolean") {
       throw badRequest("Invalid offering patch.", `${windowField}.isOpen must be a boolean.`);
     }
+
+    if (patch[windowField]?.closesOn !== undefined) {
+      const closesOn = patch[windowField].closesOn;
+      if (closesOn !== null && typeof closesOn !== "string") {
+        throw badRequest("Invalid offering patch.", `${windowField}.closesOn must be a date string or null.`);
+      }
+
+      if (typeof closesOn === "string" && closesOn.trim() !== "" && !toIsoDate(closesOn)) {
+        throw badRequest("Invalid offering patch.", `${windowField}.closesOn must be a valid date.`);
+      }
+    }
   }
 
   if (patch.allocationPolicy !== undefined && !ALLOWED_POLICIES.has(patch.allocationPolicy)) {
     throw badRequest("Invalid offering patch.", `Unsupported allocation policy: ${patch.allocationPolicy}`);
   }
+}
+
+function normalizeWindowPatch(windowPatch) {
+  if (!windowPatch) {
+    return windowPatch;
+  }
+
+  return {
+    ...windowPatch,
+    ...(windowPatch.closesOn !== undefined ? { closesOn: toIsoDate(windowPatch.closesOn) } : {}),
+  };
+}
+
+function normalizeOfferingPatch(patch) {
+  return {
+    ...patch,
+    ...(patch.requestWindow !== undefined ? { requestWindow: normalizeWindowPatch(patch.requestWindow) } : {}),
+    ...(patch.dropWindow !== undefined ? { dropWindow: normalizeWindowPatch(patch.dropWindow) } : {}),
+  };
 }
 
 function validateOfferingState(offering) {
@@ -104,19 +341,91 @@ function buildSeatOccupants(snapshot, offering) {
   };
 }
 
+export function listAdminCourses(snapshot) {
+  const offeringCountByCode = snapshot.offerings.reduce((counts, offering) => {
+    counts.set(offering.courseCode, (counts.get(offering.courseCode) ?? 0) + 1);
+    return counts;
+  }, new Map());
+
+  return [...snapshot.courses]
+    .map((course) => ({
+      ...course,
+      offeringCount: offeringCountByCode.get(course.code) ?? 0,
+    }))
+    .sort((left, right) => left.code.localeCompare(right.code));
+}
+
 export function listAdminOfferings(snapshot) {
-  return snapshot.offerings.map((offering) => ({
-    ...offering,
-    adminFlags: {
-      requestWindowClosed: !offering.requestWindow?.isOpen,
-      dropWindowClosed: !offering.dropWindow?.isOpen,
-      lockedByPolicy: offering.allocationPolicy === "locked",
-    },
-  }));
+  const coursesByCode = new Map(snapshot.courses.map((course) => [course.code, course]));
+
+  return snapshot.offerings
+    .map((offering) => {
+      const course = coursesByCode.get(offering.courseCode);
+
+      return {
+        ...offering,
+        title: course?.title ?? offering.courseCode,
+        faculty: course?.faculty ?? "",
+        department: course?.department ?? "",
+        credits: course?.credits ?? 0,
+        listType: course?.listType ?? "Elective",
+        crossFaculty: course?.crossFaculty ?? false,
+        adminFlags: {
+          requestWindowClosed: !offering.requestWindow?.isOpen,
+          dropWindowClosed: !offering.dropWindow?.isOpen,
+          lockedByPolicy: offering.allocationPolicy === "locked",
+        },
+      };
+    })
+    .sort((left, right) => `${left.courseCode} ${left.id}`.localeCompare(`${right.courseCode} ${right.id}`));
+}
+
+export function createCourseForAdmin(snapshot, payload, actor = { type: "staff", id: "staff-office-001" }) {
+  validateCoursePayload(payload);
+  const course = normalizeCoursePayload(payload);
+
+  if (snapshot.courses.some((existing) => existing.code === course.code)) {
+    throw conflict("Course already exists.", `Course ${course.code} already exists.`);
+  }
+
+  const department = buildDepartmentRecord(course);
+  const auditEvent = createAuditEvent({
+    actor,
+    action: "course-created",
+    targetType: "course",
+    targetId: course.code,
+    before: null,
+    after: clone(course),
+    subjectStudentId: null,
+  });
+
+  return { course, department, auditEvent };
+}
+
+export function createOfferingForAdmin(snapshot, payload, actor = { type: "staff", id: "staff-office-001" }) {
+  validateOfferingCreatePayload(snapshot, payload);
+  const offering = normalizeOfferingPayload(snapshot, payload);
+
+  if (snapshot.offerings.some((existing) => existing.id === offering.id)) {
+    throw conflict("Offering already exists.", `Offering ${offering.id} already exists.`);
+  }
+
+  const auditEvent = createAuditEvent({
+    actor,
+    action: "offering-created",
+    targetType: "offering",
+    targetId: offering.id,
+    before: null,
+    after: clone(offering),
+    subjectStudentId: null,
+  });
+
+  return { offering, auditEvent };
 }
 
 export function updateOfferingForAdmin(snapshot, offeringId, patch, actor = { type: "staff", id: "staff-office-001" }) {
   validateOfferingPatch(patch);
+  const normalizedPatch = normalizeOfferingPatch(patch);
   const nextSnapshot = clone(snapshot);
   const offering = nextSnapshot.offerings.find((item) => item.id === offeringId);
 
@@ -126,23 +435,23 @@ export function updateOfferingForAdmin(snapshot, offeringId, patch, actor = { ty
 
   const before = clone(offering);
 
-  if (patch.capacity !== undefined) {
-    offering.capacity = patch.capacity;
+  if (normalizedPatch.capacity !== undefined) {
+    offering.capacity = normalizedPatch.capacity;
   }
-  if (patch.requestWindow?.isOpen !== undefined) {
-    offering.requestWindow = { ...offering.requestWindow, ...patch.requestWindow };
+  if (normalizedPatch.requestWindow?.isOpen !== undefined || normalizedPatch.requestWindow?.closesOn !== undefined) {
+    offering.requestWindow = { ...offering.requestWindow, ...normalizedPatch.requestWindow };
   }
-  if (patch.dropWindow?.isOpen !== undefined) {
-    offering.dropWindow = { ...offering.dropWindow, ...patch.dropWindow };
+  if (normalizedPatch.dropWindow?.isOpen !== undefined || normalizedPatch.dropWindow?.closesOn !== undefined) {
+    offering.dropWindow = { ...offering.dropWindow, ...normalizedPatch.dropWindow };
   }
-  if (patch.allocationPolicy) {
-    offering.allocationPolicy = patch.allocationPolicy;
+  if (normalizedPatch.allocationPolicy) {
+    offering.allocationPolicy = normalizedPatch.allocationPolicy;
   }
-  if (patch.waitlistCount !== undefined) {
-    offering.waitlistCount = patch.waitlistCount;
+  if (normalizedPatch.waitlistCount !== undefined) {
+    offering.waitlistCount = normalizedPatch.waitlistCount;
   }
-  if (patch.seatsTaken !== undefined) {
-    offering.seatsTaken = patch.seatsTaken;
+  if (normalizedPatch.seatsTaken !== undefined) {
+    offering.seatsTaken = normalizedPatch.seatsTaken;
   }
 
   validateOfferingState(offering);

@@ -4,6 +4,8 @@ import { createSeedDomainSnapshot } from "../src/domainSeed.js";
 import {
   closeDataStore,
   cancelRequest,
+  createAdminCourse,
+  createAdminOffering,
   createAdminOverride,
   deleteAdminOverride,
   dropCourse,
@@ -12,6 +14,7 @@ import {
   getDomainSnapshot,
   listAdminOverrideView,
   listAdminOfferingView,
+  listAdminCourseView,
   listAdminRequestView,
   initDataStore,
   previewAdminOfferingImpact,
@@ -195,15 +198,15 @@ test("course capacity is shared across different student snapshots", async () =>
   const defaultSnapshotAfter = await getBootstrap();
   const updatedCourse = defaultSnapshotAfter.courses.find((course) => course.id === "IDAT7212-A-S2");
 
-  assert.equal(beforeCourse?.capacityView.primary, "8 seat(s) left");
-  assert.equal(updatedCourse?.capacityView.primary, "7 seat(s) left");
+  assert.equal(beforeCourse?.capacityView.primary, "8 seats left");
+  assert.equal(updatedCourse?.capacityView.primary, "7 seats left");
 
   await resetDemo({ studentId: "4000000001" });
 
   const restoredSnapshot = await getBootstrap();
   const restoredCourse = restoredSnapshot.courses.find((course) => course.id === "IDAT7212-A-S2");
 
-  assert.equal(restoredCourse?.capacityView.primary, "8 seat(s) left");
+  assert.equal(restoredCourse?.capacityView.primary, "8 seats left");
 });
 
 test("audit trail records student actions with actor context", async () => {
@@ -232,6 +235,49 @@ test("admin views can inspect shared offerings and cross-student request queues"
   assert.ok(requests.some((request) => request.student.id === "3036605296" && request.offeringId === "COMP7906-B-S2"));
 });
 
+test("admin can create a new course and offering that immediately appear in staff and student views", async () => {
+  const createdCourse = await createAdminCourse({
+    code: "COMP7999",
+    title: "Advanced enrollment operations",
+    faculty: "Faculty of Engineering",
+    department: "Computer Science",
+    listType: "Elective",
+    credits: 6,
+    crossFaculty: false,
+    synopsis: "Administrative testing course.",
+  });
+
+  assert.equal(createdCourse.ok, true);
+
+  const createdOffering = await createAdminOffering({
+    courseCode: "COMP7999",
+    semester: 2,
+    subclass: "A",
+    allocationPolicy: "firstComeFirstServed",
+    capacity: 25,
+    requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+    dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+    schedule: [{ day: "Fri", start: "10:30", end: "12:20", venue: "HYC 101" }],
+    prerequisites: [],
+    corequisites: [],
+  });
+
+  assert.equal(createdOffering.ok, true);
+  assert.equal(createdOffering.offering.id, "COMP7999-A-S2");
+  assert.equal(createdOffering.offering.title, "Advanced enrollment operations");
+
+  const adminCourses = await listAdminCourseView();
+  const adminOfferings = await listAdminOfferingView();
+  const bootstrap = await getBootstrap();
+  const auditTrail = await getAuditTrail();
+
+  assert.ok(adminCourses.some((course) => course.code === "COMP7999" && course.offeringCount === 1));
+  assert.ok(adminOfferings.some((offering) => offering.id === "COMP7999-A-S2" && offering.title === "Advanced enrollment operations"));
+  assert.ok(bootstrap.courses.some((course) => course.id === "COMP7999-A-S2" && course.title === "Advanced enrollment operations"));
+  assert.ok(auditTrail.some((event) => event.action === "course-created" && event.targetId === "COMP7999"));
+  assert.ok(auditTrail.some((event) => event.action === "offering-created" && event.targetId === "COMP7999-A-S2"));
+});
+
 test("admin offering preview exposes tracked approved students across the shared offering", async () => {
   await submitRequest("IDAT7212-A-S2", { studentId: "4000000001" });
 
@@ -240,8 +286,8 @@ test("admin offering preview exposes tracked approved students across the shared
     seatsTaken: 29,
     waitlistCount: 1,
     allocationPolicy: "firstComeFirstServed",
-    requestWindow: { isOpen: true, closesOn: "31 January 2026" },
-    dropWindow: { isOpen: true, closesOn: "31 January 2026" },
+    requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+    dropWindow: { isOpen: true, closesOn: "2026-01-31" },
   });
 
   assert.equal(preview.ok, true);
@@ -329,9 +375,9 @@ test("admin approval promotes a request into enrollment and consumes shared capa
   assert.equal(afterOffering?.seatsTaken, (beforeOffering?.seatsTaken ?? 0) + 1);
 });
 
-test("admin rejection closes a request without creating an enrollment and writes staff audit context", async () => {
-  const request = (await listAdminRequestView({ filters: { active: true, studentId: "3036605296" } }))
-    .find((item) => item.offeringId === "COMP7906-B-S2");
+test("admin rejection closes a review request without creating an enrollment and writes staff audit context", async () => {
+  const request = (await listAdminRequestView({ filters: { active: true, studentId: "4000000001" } }))
+    .find((item) => item.offeringId === "MEBS6003-A-S2");
 
   assert.ok(request);
 
@@ -341,21 +387,65 @@ test("admin rejection closes a request without creating an enrollment and writes
     { actor: { type: "staff", id: "staff-reject-001" } },
   );
 
-  const defaultSnapshot = await getBootstrap();
+  const defaultSnapshot = await getBootstrap({ studentId: "4000000001" });
   const resolvedRecord = defaultSnapshot.requestRecords.find((record) => record.id === request.id);
   const auditTrail = await getAuditTrail({
     filters: {
       actorType: "staff",
       actorId: "staff-reject-001",
       targetType: "request",
-      subjectStudentId: "3036605296",
+      subjectStudentId: "4000000001",
     },
   });
 
   assert.equal(resolvedRecord?.status, "rejected");
   assert.equal(resolvedRecord?.active, false);
-  assert.equal(defaultSnapshot.approvedCourses.some((course) => course.id === "COMP7906-B-S2"), false);
+  assert.equal(defaultSnapshot.approvedCourses.some((course) => course.id === "MEBS6003-A-S2"), false);
   assert.ok(auditTrail.some((event) => event.action === "request-resolved"));
+});
+
+test("admin ordinary resolution rejects lottery pool requests", async () => {
+  const request = (await listAdminRequestView({ filters: { active: true, studentId: "3036605296" } }))
+    .find((item) => item.offeringId === "COMP7906-B-S2");
+
+  assert.ok(request);
+
+  await assert.rejects(
+    resolveAdminRequest(
+      request.id,
+      { action: "reject", note: "Rejected after manual review." },
+      { actor: { type: "staff", id: "staff-reject-lottery-001" } },
+    ),
+    /ordinary staff review queue/i,
+  );
+});
+
+test("admin resolution rejects closed requests and duplicate waitlist moves", async () => {
+  const closedRequest = (await listAdminRequestView({ filters: { studentId: "4000000001" } }))
+    .find((item) => item.offeringId === "LATX7517-A-S2");
+  const waitlistRequest = (await listAdminRequestView({ filters: { active: true, studentId: "4000000001" } }))
+    .find((item) => item.offeringId === "MEST7414-A-S2");
+
+  assert.ok(closedRequest);
+  assert.ok(waitlistRequest);
+
+  await assert.rejects(
+    resolveAdminRequest(
+      closedRequest.id,
+      { action: "manual-close", note: "Close again." },
+      { actor: { type: "staff", id: "staff-closed-guard-001" } },
+    ),
+    /no longer active/i,
+  );
+
+  await assert.rejects(
+    resolveAdminRequest(
+      waitlistRequest.id,
+      { action: "waitlist", note: "Move to waitlist again." },
+      { actor: { type: "staff", id: "staff-waitlist-guard-001" } },
+    ),
+    /cannot be moved to waitlist again/i,
+  );
 });
 
 test("global reset restores shared offerings, clears audit history, and rebuilds demo students from seed", async () => {

@@ -114,6 +114,28 @@ export function fetchAdminOfferings(actorId = DEFAULT_STAFF_ACTOR_ID) {
   });
 }
 
+export function fetchAdminCourses(actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/courses", {
+    headers: buildStaffHeaders(actorId),
+  });
+}
+
+export function createAdminCourse(payload, actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/courses", {
+    method: "POST",
+    headers: buildStaffHeaders(actorId),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createAdminOffering(payload, actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/offerings", {
+    method: "POST",
+    headers: buildStaffHeaders(actorId),
+    body: JSON.stringify(payload),
+  });
+}
+
 export function updateAdminOffering(offeringId, patch, actorId = DEFAULT_STAFF_ACTOR_ID) {
   return request(`/admin/offerings/${encodeURIComponent(offeringId)}`, {
     method: "PATCH",

@@ -176,7 +176,7 @@ select:focus-visible {
   text-decoration: none;
 }
 
-.top-link::after {
+.portal-links__menu > .top-link:not(:last-child)::after {
   content: " |";
   margin-left: 0.25rem;
 }
@@ -319,4 +319,8 @@ select:focus-visible {
 .portal-main {
   padding: 0.65rem 0.7rem 0.9rem;
   background: var(--page-bg);
+}
+
+.portal-main--with-quick-dock {
+  padding-right: 14.4rem;
 }

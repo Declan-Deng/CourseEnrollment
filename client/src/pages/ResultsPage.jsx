@@ -1,40 +1,48 @@
 import { AcademicSummaryStrip, EmptyTableRow, StatusText, TableSection } from "../components/PortalShared";
-import { getListTypeClass, getRecordTone } from "../portalModel";
+import { getListTypeClass, getListTypeLabel, getPolicyTagMeta, getRecordTone } from "../portalModel";
 
 function RecordRow({ record, archived = false, onNavigate = null }) {
+  const policyMeta = getPolicyTagMeta(record.course);
+
   return (
     <tr className={archived ? "portal-row portal-row--archived" : undefined}>
       <td>{record.course.semester}</td>
-      <td>{record.course.code}</td>
-      <td>{record.course.subclass}</td>
       <td>
-        <span className={getListTypeClass(record.course.listType)}>{record.course.listType}</span>
+        <div className="cell-title">
+          <strong>{record.course.code}</strong>
+          <span>{record.course.title}</span>
+          <div className="tag-row">
+            <span className={getListTypeClass(record.course.listType)} title={getListTypeLabel(record.course.listType)}>
+              {record.course.listType}
+            </span>
+            <span className="soft-tag soft-tag--subclass">Subclass {record.course.subclass}</span>
+            <span className="soft-tag soft-tag--policy-compact">{policyMeta.label}</span>
+          </div>
+        </div>
       </td>
-      <td>{record.course.credits}</td>
-      <td>{record.course.title}</td>
       <td>
         <StatusText tone={getRecordTone(record.status)}>{record.statusLabel}</StatusText>
       </td>
       <td>
         <div className="cell-title">
-          <strong>{record.course.faculty}</strong>
-          <span>{record.course.policyLabel}</span>
+          <strong>{record.message}</strong>
+          <span>{record.nextStep}</span>
         </div>
       </td>
-      <td>{record.message}</td>
-      <td>{record.nextStep}</td>
       {onNavigate ? (
         <td>
-          <div className="cell-actions cell-actions--stacked">
-            <button type="button" className="mini-button" onClick={() => onNavigate("cancel")}>
-              Go to cancel
-            </button>
+          <div className="cell-actions">
+            {record.withdrawable ? (
+              <button type="button" className="mini-button" onClick={() => onNavigate("cancel")}>
+                Manage withdrawal
+              </button>
+            ) : null}
             <button
               type="button"
               className="mini-button"
               onClick={() => onNavigate({ page: "add", courseId: record.course.id })}
             >
-              Back to course
+              Open course page
             </button>
           </div>
         </td>
@@ -57,25 +65,27 @@ export function ResultsPage({
   const currentEnrolment = requestStatusView?.currentEnrolment ?? approvedCourses;
   const activeRecords =
     requestStatusView?.activeRequests ?? requestRecords.filter((record) => record.active);
+  const withdrawableRecords =
+    requestStatusView?.withdrawableRequests ?? activeRecords.filter((record) => record.withdrawable);
   const historyRecords =
     requestStatusView?.archivedChanges ?? requestRecords.filter((record) => !record.active);
   const nextAction = requestStatusView?.nextAction;
   const academicYearLabel = semester?.academicYear ?? student?.admissionYear ?? "N/A";
 
-  const nextActionButtons = activeRecords.length > 0
+  const nextActionButtons = withdrawableRecords.length > 0
     ? [
         {
-          label: "Go to cancel",
+          label: "Manage active requests",
           onClick: () => onNavigate?.("cancel"),
         },
         {
-          label: "Back to Course Center",
+          label: "Course Center",
           onClick: () => onNavigate?.("add"),
         },
       ]
     : [
         {
-          label: "Back to Course Center",
+          label: "Course Center",
           onClick: () => onNavigate?.("add"),
         },
       ];
@@ -88,7 +98,6 @@ export function ResultsPage({
         summary={summary}
         systemMeta={systemMeta}
         title="Academic Summary"
-        showUrgentActions
         onRefresh={onRefresh}
       />
 
@@ -123,33 +132,30 @@ export function ResultsPage({
         headers={[
           "Academic Year",
           "Sem",
-          "Course Code",
-          "Subclass",
-          "Course Type",
+          "Course",
           "Credit",
-          "Course Title",
-          "Faculty / Policy",
           "Status",
         ]}
       >
-        {currentEnrolment.length === 0 ? <EmptyTableRow colSpan={9} message="No course is currently enrolled." /> : null}
+        {currentEnrolment.length === 0 ? <EmptyTableRow colSpan={5} message="No course is currently enrolled." /> : null}
         {currentEnrolment.map((course) => (
           <tr key={course.id}>
             <td>{academicYearLabel}</td>
             <td>{course.semester}</td>
-            <td>{course.code}</td>
-            <td>{course.subclass}</td>
-            <td>
-              <span className={getListTypeClass(course.listType)}>{course.listType}</span>
-            </td>
-            <td>{course.credits}</td>
-            <td>{course.title}</td>
             <td>
               <div className="cell-title">
-                <strong>{course.faculty}</strong>
-                <span>{course.policyLabel}</span>
+                <strong>{course.code}</strong>
+                <span>{course.title}</span>
+                <div className="tag-row">
+                  <span className={getListTypeClass(course.listType)} title={getListTypeLabel(course.listType)}>
+                    {course.listType}
+                  </span>
+                  <span className="soft-tag soft-tag--subclass">Subclass {course.subclass}</span>
+                  <span className="soft-tag soft-tag--policy-compact">{getPolicyTagMeta(course).label}</span>
+                </div>
               </div>
             </td>
+            <td>{course.credits} credits</td>
             <td>
               <StatusText tone="success">{course.currentState.kind === "approved" ? "Approved" : "Pending"}</StatusText>
             </td>
@@ -163,20 +169,14 @@ export function ResultsPage({
         tableAriaLabel="Active request status table"
         headers={[
           "Sem",
-          "Course Code",
-          "Subclass",
-          "Course Type",
-          "Credit",
-          "Course Title",
-          "Enrolment Status",
-          "Faculty / Policy",
-          "Message",
-          "Next Step",
+          "Course",
+          "Enrolment status",
+          "Message / next step",
           "Actions",
         ]}
       >
         {activeRecords.length === 0 ? (
-          <EmptyTableRow colSpan={11} message="No active request is currently pending." />
+          <EmptyTableRow colSpan={5} message="No active request is currently pending." />
         ) : null}
         {activeRecords.map((record) => (
           <RecordRow key={record.id} record={record} onNavigate={onNavigate} />
@@ -189,19 +189,13 @@ export function ResultsPage({
         tableAriaLabel="Archived enrolment changes table"
         headers={[
           "Sem",
-          "Course Code",
-          "Subclass",
-          "Course Type",
-          "Credit",
-          "Course Title",
+          "Course",
           "Status",
-          "Faculty / Policy",
-          "Message",
-          "Next Step",
+          "Message / next step",
         ]}
       >
         {historyRecords.length === 0 ? (
-          <EmptyTableRow colSpan={10} message="No archived cancellation or drop record." />
+          <EmptyTableRow colSpan={4} message="No archived withdrawals or closed requests yet." />
         ) : null}
         {historyRecords.map((record) => (
           <RecordRow key={record.id} record={record} archived />

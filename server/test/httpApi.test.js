@@ -85,6 +85,82 @@ test("invalid admin offering patch returns a non-500 validation response", async
   assert.match(body.message, /capacity cannot be lower than seatsTaken/i);
 });
 
+test("admin offerings expose normalized ISO window dates", async () => {
+  const { response, body } = await requestJson("/api/admin/offerings", {
+    headers: {
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-offerings-001",
+    },
+  });
+
+  assert.equal(response.status, 200);
+  const offering = body.find((item) => item.id === "IDAT7212-A-S2");
+  assert.equal(offering.requestWindow.closesOn, "2026-01-31");
+  assert.equal(offering.dropWindow.closesOn, "2026-01-31");
+});
+
+test("admin can create courses and offerings over HTTP", async () => {
+  const createdCourse = await requestJson("/api/admin/courses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-course-create-001",
+    },
+    body: JSON.stringify({
+      code: "MECH7998",
+      title: "Systems integration studio",
+      faculty: "Faculty of Engineering",
+      department: "Mechanical Engineering",
+      listType: "Elective",
+      credits: 6,
+      crossFaculty: false,
+      synopsis: "HTTP creation test course.",
+    }),
+  });
+
+  assert.equal(createdCourse.response.status, 200);
+  assert.equal(createdCourse.body.ok, true);
+  assert.equal(createdCourse.body.course.code, "MECH7998");
+
+  const createdOffering = await requestJson("/api/admin/offerings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-offering-create-001",
+    },
+    body: JSON.stringify({
+      courseCode: "MECH7998",
+      semester: 2,
+      subclass: "A",
+      allocationPolicy: "priorityReview",
+      capacity: 20,
+      requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+      dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+      schedule: [{ day: "Wed", start: "18:30", end: "21:20", venue: "HYC 301" }],
+      prerequisites: ["MECH6034"],
+      corequisites: [],
+    }),
+  });
+
+  assert.equal(createdOffering.response.status, 200);
+  assert.equal(createdOffering.body.ok, true);
+  assert.equal(createdOffering.body.offering.id, "MECH7998-A-S2");
+  assert.equal(createdOffering.body.offering.title, "Systems integration studio");
+
+  const bootstrap = await requestJson("/api/bootstrap");
+  const adminCourses = await requestJson("/api/admin/courses", {
+    headers: {
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-course-create-001",
+    },
+  });
+
+  assert.ok(adminCourses.body.some((course) => course.code === "MECH7998" && course.offeringCount === 1));
+  assert.ok(bootstrap.body.courses.some((course) => course.id === "MECH7998-A-S2"));
+});
+
 test("admin offering preview returns impact summary without mutating state", async () => {
   await requestJson("/api/enrollment/request", {
     method: "POST",
@@ -107,8 +183,8 @@ test("admin offering preview returns impact summary without mutating state", asy
       seatsTaken: 2,
       waitlistCount: 0,
       allocationPolicy: "firstComeFirstServed",
-      requestWindow: { isOpen: true, closesOn: "31 January 2026" },
-      dropWindow: { isOpen: true, closesOn: "31 January 2026" },
+      requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+      dropWindow: { isOpen: true, closesOn: "2026-01-31" },
     }),
   });
 
@@ -125,7 +201,7 @@ test("admin offering preview returns impact summary without mutating state", asy
 
   const bootstrap = await requestJson("/api/bootstrap");
   const offering = bootstrap.body.courses.find((course) => course.id === "IDAT7212-A-S2");
-  assert.equal(offering.capacityView.primary, "7 seat(s) left");
+  assert.equal(offering.capacityView.primary, "7 seats left");
 });
 
 test("admin override lifecycle works over HTTP and changes student preview", async () => {
@@ -319,5 +395,35 @@ test("admin request resolution preview can describe an invalid approval without 
   assert.equal(preview.body.ok, false);
   assert.equal(preview.body.requestId, requestId);
   assert.equal(preview.body.current.request.id, requestId);
-  assert.match(preview.body.headline, /offering/i);
+  assert.match(preview.body.headline, /lottery/i);
+});
+
+test("admin request resolution endpoint rejects ordinary lottery approvals", async () => {
+  const requests = await requestJson("/api/admin/requests?active=true", {
+    headers: {
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-lottery-guard-001",
+    },
+  });
+  const requestId = requests.body.find((item) => item.offeringId === "COMP7906-B-S2")?.id;
+
+  assert.ok(requestId);
+
+  const resolution = await requestJson(`/api/admin/requests/${encodeURIComponent(requestId)}/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-lottery-guard-001",
+    },
+    body: JSON.stringify({
+      action: "approve",
+      note: "Should not be allowed from ordinary staff queue.",
+    }),
+  });
+
+  assert.equal(resolution.response.status, 409);
+  assert.equal(resolution.body.ok, false);
+  assert.match(resolution.body.headline, /lottery/i);
+  assert.match(resolution.body.message, /ordinary staff review queue/i);
 });

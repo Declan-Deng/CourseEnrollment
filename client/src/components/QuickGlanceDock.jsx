@@ -34,19 +34,22 @@ function resolvePrimaryAction(activePage, summary, activeRequests) {
 
   return activeRequests.length > 0
     ? {
-        label: "Review requests",
+        label: "Manage active requests",
         page: "cancel",
       }
     : {
-        label: "View results",
+        label: "View enrolment results",
         page: "results",
       };
 }
 
-export function QuickGlanceDock({ approvedCourses, activeRequests, summary, systemMeta, onNavigate, onRefresh, activePage }) {
+export function QuickGlanceDock({ activeRequests, summary, systemMeta, onNavigate, activePage }) {
   const actionSummary = summary?.studentActionSummary ?? {};
   const nextDeadline = actionSummary.nextDeadline ?? "No active deadline";
   const primaryAction = resolvePrimaryAction(activePage, summary, activeRequests);
+  const activeRequestLabel =
+    activeRequests.length === 1 ? "1 active request" : `${activeRequests.length} active requests`;
+  const deadlineLabel = nextDeadline === "No active deadline" ? nextDeadline : `Next deadline: ${nextDeadline}`;
 
   return (
     <div className="quick-dock-wrap">
@@ -56,23 +59,11 @@ export function QuickGlanceDock({ approvedCourses, activeRequests, summary, syst
           <span>{systemMeta?.isSyncing ? systemMeta.syncLabel || "Syncing…" : formatQuickTimestamp(systemMeta?.lastUpdatedAt)}</span>
         </div>
         <div className="quick-dock__metrics">
-          <span className="quick-pill quick-pill--neutral">Load {summary.plannedCredits}/{summary.creditLimit} cr</span>
-          <span className="quick-pill">Enrolled {approvedCourses.length}</span>
-          <span className="quick-pill quick-pill--warn">Active {activeRequests.length}</span>
-          <span className="quick-pill quick-pill--neutral">Next {nextDeadline}</span>
+          <span className="quick-pill quick-pill--warn">{activeRequestLabel}</span>
+          <span className="quick-pill quick-pill--neutral">{deadlineLabel}</span>
         </div>
 
         <div className="quick-dock__actions">
-          {onRefresh ? (
-            <button
-              type="button"
-              className="quick-link"
-              onClick={onRefresh}
-              disabled={systemMeta?.isSyncing}
-            >
-              {systemMeta?.isSyncing ? "Syncing…" : "Refresh"}
-            </button>
-          ) : null}
           <button
             type="button"
             className="quick-link quick-link--primary"

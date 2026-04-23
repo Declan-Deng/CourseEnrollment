@@ -1,15 +1,15 @@
 import { getStateStatusLabel } from "./enrollmentMeta.js";
 
 const policyCopy = {
-  firstComeFirstServed: "First come, first served",
-  lottery: "Lottery allocation",
-  priorityReview: "Faculty priority review",
-  locked: "Locked by programme office",
+  firstComeFirstServed: "FCFS",
+  lottery: "Lottery",
+  priorityReview: "Faculty review",
+  locked: "Locked",
 };
 const PREVIEW_STATE_COPY = {
   approved: { kind: "requestable", label: "Can request" },
   waitlist: { kind: "waitlistAvailable", label: "Join waitlist" },
-  pendingReview: { kind: "reviewAvailable", label: "Review path" },
+  pendingReview: { kind: "reviewAvailable", label: "Faculty review" },
   lotteryQueued: { kind: "lotteryAvailable", label: "Lottery path" },
   rejected: { kind: "blocked", label: "Blocked" },
 };
@@ -27,6 +27,10 @@ export const CONSTRAINT_OVERRIDE_TYPES = {
 function toMinutes(value) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
+}
+
+function formatCountLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function getCourseIndex(state) {
@@ -172,7 +176,7 @@ export function evaluateEnrollment(state, courseId) {
 
   if (!course.requestOpen) {
     return createRejection(
-      "Enrollment window closed for this offering.",
+      "Enrolment window closed for this offering.",
       [
         `${course.code} is currently locked by the programme office or outside the active request window.`,
         `Next relevant date: verify final enrolment records during ${state.semester.keyDates?.resultCheckWindow ?? "the final record review window"}.`,
@@ -297,8 +301,8 @@ export function evaluateEnrollment(state, courseId) {
         "approved",
         [
           "No timetable, prerequisite, co-requisite, quota, credit-limit, or duplicate issue was found.",
-          `${seatsRemaining} seat(s) are currently available.`,
-          "The allocation policy is first come, first served.",
+          `${formatCountLabel(seatsRemaining, "seat")} ${seatsRemaining === 1 ? "is" : "are"} currently available.`,
+          "The allocation policy is FCFS.",
         ],
         [],
         "success",
@@ -310,7 +314,7 @@ export function evaluateEnrollment(state, courseId) {
       "waitlist",
         [
           "No rule conflict was found, but all seats are currently taken.",
-          `${course.seats.waitlist} student(s) are already waiting.`,
+          `${formatCountLabel(course.seats.waitlist, "student")} ${course.seats.waitlist === 1 ? "is" : "are"} already waiting.`,
         ],
         [],
         "waitlist",

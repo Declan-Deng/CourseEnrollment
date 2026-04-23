@@ -1,6 +1,7 @@
 import { initialState } from "../data/seed.js";
 import { createAuditEvent } from "./auditService.js";
 import { createRuntimeState } from "./runtimeState.js";
+import { toIsoDate } from "./windowDates.js";
 
 function slugify(value) {
   return String(value ?? "")
@@ -74,11 +75,11 @@ function buildOfferings(runtimeSeed) {
     allocationPolicy: course.allocationPolicy,
     requestWindow: {
       isOpen: course.requestOpen,
-      closesOn: runtimeSeed.semester.keyDates?.requestClose ?? null,
+      closesOn: toIsoDate(runtimeSeed.semester.keyDates?.requestClose),
     },
     dropWindow: {
       isOpen: course.dropOpen,
-      closesOn: runtimeSeed.semester.keyDates?.addDropClose ?? null,
+      closesOn: toIsoDate(runtimeSeed.semester.keyDates?.addDropClose),
     },
     capacity: course.seats.capacity,
     seatsTaken: course.seats.taken,
@@ -389,13 +390,13 @@ function buildSeedAuditEvents() {
         capacity: 28,
         seatsTaken: 23,
         waitlistCount: 3,
-        requestWindow: { isOpen: true, closesOn: "31 January 2026" },
+        requestWindow: { isOpen: true, closesOn: "2026-01-31" },
       },
       after: {
         capacity: 30,
         seatsTaken: 23,
         waitlistCount: 4,
-        requestWindow: { isOpen: true, closesOn: "31 January 2026" },
+        requestWindow: { isOpen: true, closesOn: "2026-01-31" },
       },
     }),
     createAuditEvent({

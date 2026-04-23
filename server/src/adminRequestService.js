@@ -1,7 +1,9 @@
 import { createAuditEvent } from "./auditService.js";
 import { ensureStaffActor } from "./actors.js";
 import { clone } from "./clone.js";
-import { conflict, notFound } from "./domainErrors.js";
+import { badRequest, conflict, notFound } from "./domainErrors.js";
+
+const RESOLUTION_TYPES = new Set(["approve", "reject", "waitlist", "manual-close"]);
 
 export function listAdminRequests(snapshot, filters = {}) {
   return snapshot.requests.filter((request) => {
@@ -48,6 +50,50 @@ function adjustWaitlistForRequestResolution(offering, request, nextAction) {
   }
 }
 
+function assertPolicyAllowsResolution(offering, request, resolutionType) {
+  if (!RESOLUTION_TYPES.has(resolutionType)) {
+    throw badRequest(
+      "Unsupported request resolution.",
+      "Use approve, reject, waitlist, or manual-close.",
+    );
+  }
+
+  if (!request.active) {
+    throw conflict(
+      "Request is already closed.",
+      `Request ${request.id} is no longer active and cannot be resolved again.`,
+    );
+  }
+
+  if ((offering.allocationPolicy === "lottery" || request.status === "lotteryQueued") && resolutionType !== "manual-close") {
+    throw conflict(
+      "Lottery request requires lottery workflow.",
+      "Lottery pool requests cannot be manually approved, rejected, or waitlisted from the ordinary staff review queue.",
+    );
+  }
+
+  if (request.status === "waitlist" && !["approve", "reject", "manual-close"].includes(resolutionType)) {
+    throw conflict(
+      "Waitlist request requires waitlist handling.",
+      "A waitlisted request can be approved, rejected, or closed without outcome; it cannot be moved to waitlist again.",
+    );
+  }
+
+  if (offering.allocationPolicy === "firstComeFirstServed" && request.status !== "waitlist" && resolutionType !== "manual-close") {
+    throw conflict(
+      "FCFS request is handled automatically.",
+      "Routine FCFS requests cannot be manually approved, rejected, or waitlisted from the staff review queue.",
+    );
+  }
+
+  if (offering.allocationPolicy === "locked" && resolutionType !== "manual-close") {
+    throw conflict(
+      "Locked offering cannot use ordinary resolution.",
+      "Locked offering requests can only be closed without outcome from the staff console.",
+    );
+  }
+}
+
 export function resolveRequestForAdmin(
   snapshot,
   requestId,
@@ -80,6 +126,8 @@ export function resolveRequestForAdmin(
   if (!offering) {
     throw notFound("Offering not found.", `Offering ${request.offeringId} was not found.`);
   }
+
+  assertPolicyAllowsResolution(offering, request, resolutionType);
 
   if (resolutionType === "approve") {
     const existingEnrollment = nextSnapshot.enrollments.find(

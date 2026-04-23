@@ -9,6 +9,10 @@ function resolveWindowSummary(summary, semester) {
   };
 }
 
+function formatCreditFigure(value, creditLimit) {
+  return `${value ?? 0} / ${creditLimit ?? "—"} credits`;
+}
+
 const SUMMARY_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
   minute: "2-digit",
@@ -37,21 +41,26 @@ export function AcademicSummaryStrip({
   systemMeta = null,
   onRefresh = null,
 }) {
-  const remainingStudyLoad = Number.isFinite(summary?.creditLimit)
-    ? Math.max(summary.creditLimit - (summary.plannedCredits ?? 0), 0)
+  const creditLimit = summary?.creditLimit ?? student?.semesterStudyLoadLimit ?? null;
+  const confirmedCredits = summary?.confirmedCredits ?? 0;
+  const plannedCredits = summary?.plannedCredits ?? confirmedCredits;
+  const remainingStudyLoad = Number.isFinite(creditLimit)
+    ? Math.max(creditLimit - plannedCredits, 0)
     : null;
   const actionSummary = summary?.studentActionSummary ?? {};
-  const windowSummary = resolveWindowSummary(summary, semester);
   const summaryItems = [
     { label: "Student", value: `${student.id}` },
     { label: "Programme", value: student.programme },
     {
-      label: "Credits",
-      value: `${summary?.plannedCredits ?? 0}/${summary?.creditLimit ?? student?.semesterStudyLoadLimit ?? "—"}`,
+      label: "Confirmed",
+      value: formatCreditFigure(confirmedCredits, creditLimit),
       accent: true,
     },
-    windowSummary.requestClose ? { label: "Request deadline", value: windowSummary.requestClose } : null,
-    windowSummary.supportContact ? { label: "Support", value: windowSummary.supportContact } : null,
+    {
+      label: "Planned incl. active requests",
+      value: formatCreditFigure(plannedCredits, creditLimit),
+      accent: plannedCredits !== confirmedCredits,
+    },
   ].filter(Boolean);
   const urgentActions = Array.isArray(actionSummary.urgentActions)
     ? actionSummary.urgentActions.filter(Boolean).slice(0, 2)
@@ -145,7 +154,7 @@ export function WindowStatusStrip({ summary, semester, title = "Current window",
           <span className="window-status-strip__eyebrow">Planning desk</span>
           <strong className="window-status-strip__title">{title}</strong>
           <span className="window-status-strip__caption">
-            Keep the current request, add/drop, and record-check milestones in view while planning changes.
+            Keep the current request, Add / Drop, and record-check milestones in view while planning changes.
           </span>
         </div>
         <div className="window-status-grid">

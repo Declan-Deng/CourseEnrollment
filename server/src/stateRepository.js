@@ -67,6 +67,9 @@ export class RepositoryConflictError extends Error {
 class MemoryStateRepository {
   constructor(seed = domainSeed) {
     this.seed = clone(seed);
+    this.programs = clone(seed.programs ?? []);
+    this.departments = new Map(seed.departments.map((department) => [department.id, clone(department)]));
+    this.courses = new Map(seed.courses.map((course) => [course.id, clone(course)]));
     this.students = new Map();
     this.studentMeta = new Map();
     this.enrollments = new Map();
@@ -79,18 +82,30 @@ class MemoryStateRepository {
       get: async () => clone(this.seed.semester),
     };
     this.programRepository = {
-      list: async () => clone(this.seed.programs),
+      list: async () => clone(this.programs),
     };
     this.departmentRepository = {
-      list: async () => clone(this.seed.departments),
+      list: async () => sortById([...this.departments.values()]).map(clone),
+      upsert: async (department) => {
+        this.departments.set(department.id, clone(department));
+        return clone(this.departments.get(department.id));
+      },
     };
     this.courseRepository = {
-      list: async () => clone(this.seed.courses),
-      getById: async (courseId) => clone(this.seed.courses.find((course) => course.id === courseId) ?? null),
+      list: async () => sortById([...this.courses.values()]).map(clone),
+      getById: async (courseId) => clone(this.courses.get(courseId) ?? null),
+      create: async (course) => {
+        this.courses.set(course.id, clone(course));
+        return clone(this.courses.get(course.id));
+      },
     };
     this.offeringRepository = {
       list: async () => sortById([...this.offerings.values()]).map(clone),
       getById: async (offeringId) => clone(this.offerings.get(offeringId) ?? null),
+      create: async (offering) => {
+        this.offerings.set(offering.id, clone(offering));
+        return clone(this.offerings.get(offering.id));
+      },
       updateMany: async (changes = []) => this.updateOfferings(changes),
       resetAll: async () => {
         this.offerings = new Map(this.seed.offerings.map((offering) => [offering.id, clone(offering)]));
@@ -320,6 +335,9 @@ class MemoryStateRepository {
   }
 
   async resetAll() {
+    this.programs = clone(this.seed.programs ?? []);
+    this.departments = new Map(this.seed.departments.map((department) => [department.id, clone(department)]));
+    this.courses = new Map(this.seed.courses.map((course) => [course.id, clone(course)]));
     this.students = new Map();
     this.studentMeta = new Map();
     this.enrollments = new Map();
@@ -392,6 +410,14 @@ class MongoStateRepository {
     };
     this.departmentRepository = {
       list: async () => sortById((await this.collections.departments.find({}).toArray()).map(stripMongoId)),
+      upsert: async (department) => {
+        await this.collections.departments.replaceOne(
+          { _id: department.id },
+          { _id: department.id, ...clone(department) },
+          { upsert: true },
+        );
+        return clone(department);
+      },
     };
     this.courseRepository = {
       list: async () => sortById((await this.collections.courses.find({}).toArray()).map(stripMongoId)),
@@ -399,10 +425,18 @@ class MongoStateRepository {
         const course = await this.collections.courses.findOne({ _id: courseId });
         return clone(stripMongoId(course));
       },
+      create: async (course) => {
+        await this.collections.courses.insertOne({ _id: course.id, ...clone(course) });
+        return clone(course);
+      },
     };
     this.offeringRepository = {
       list: async () => sortById((await this.collections.offerings.find({}).toArray()).map(stripMongoId)),
       getById: async (offeringId) => clone(stripMongoId(await this.collections.offerings.findOne({ _id: offeringId }))),
+      create: async (offering) => {
+        await this.collections.offerings.insertOne({ _id: offering.id, ...clone(offering) });
+        return clone(offering);
+      },
       updateMany: async (changes = []) => this.updateOfferings(changes),
       resetAll: async () => {
         await this.replaceCollection(this.collections.offerings, this.seed.offerings);

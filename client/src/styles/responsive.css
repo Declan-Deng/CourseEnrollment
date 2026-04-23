@@ -56,14 +56,26 @@
   .quick-dock {
     width: min(100%, 420px);
   }
+
+  .portal-main--with-quick-dock {
+    padding-right: 15.3rem;
+  }
 }
 
 @media (max-width: 760px) {
+  .cell-actions {
+    flex-wrap: wrap;
+  }
+
   .summary-strip__metrics,
   .window-status-grid,
   .toolbar-workbench,
   .toolbar-filter-grid {
     grid-template-columns: 1fr;
+  }
+
+  .withdraw-card__header {
+    flex-direction: column;
   }
 
   .inspection-tray {
@@ -138,6 +150,10 @@
     grid-template-columns: 1fr;
   }
 
+  .staff-create-grid {
+    grid-template-columns: 1fr;
+  }
+
   .staff-form-row {
     grid-template-columns: 1fr;
   }
@@ -166,6 +182,11 @@
     grid-template-columns: 1fr;
   }
 
+  .staff-audit-detail-list__row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+
   .quick-dock-wrap {
     position: fixed;
     top: 7.3rem;
@@ -179,5 +200,10 @@
   .quick-dock {
     width: min(100vw - 0.9rem, 360px);
     pointer-events: auto;
+  }
+
+  .portal-main--with-quick-dock {
+    padding-top: 4.6rem;
+    padding-right: 0.7rem;
   }
 }

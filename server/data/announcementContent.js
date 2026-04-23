@@ -1,27 +1,27 @@
 export const semesterKeyDates = {
-  requestClose: "31 January 2026",
-  addDropClose: "31 January 2026",
-  resultCheckWindow: "20 - 25 February 2026",
-  lotteryPublish: "1 February 2026",
+  requestClose: "31 Jan 2026",
+  addDropClose: "31 Jan 2026",
+  resultCheckWindow: "20–25 Feb 2026",
+  lotteryPublish: "1 Feb 2026",
   supportContact: "Faculty Office",
 };
 
 export const selectionSchedule = [
-  ["Dec 18, 2025", "Online enrolment system will be opened for students to preview the available courses."],
-  ["Dec 19 - 31, 2025", "Enrolment period for all MSc(Eng) students."],
+  ["18 Dec 2025", "Online enrolment system opens for course preview."],
+  ["19–31 Dec 2025", "Enrolment period for all MSc(Eng) students."],
 ];
 
 export const addDropSchedule = [
-  ["Jan 19, 2026", "Second semester begins (First day of teaching)"],
-  ["Jan 19 - 31, 2026", "Students can add/drop course(s) online."],
-  ["After Jan 31, 2026", "System will be suspended. Students are not allowed to make any further changes online."],
+  ["19 Jan 2026", "Second semester begins (first day of teaching)."],
+  ["19–31 Jan 2026", "Students can add or drop courses online."],
+  ["After 31 Jan 2026", "The online add/drop function closes. Further changes require faculty handling."],
   [
-    "Feb 20 - 25, 2026",
-    "Students should CHECK their course selection status online. If any discrepancy and/or error (such as wrong course code, semester and sub-class) is found, students should report to the Department / Faculty Office for correction as soon as possible but no later than February 25, 2026. Please note that this is NOT an extended deadline for the add/drop period. No further changes to course selection will be entertained.",
+    "20–25 Feb 2026",
+    "Students should check their course selection records online. Any discrepancy should be reported to the Department / Faculty Office no later than 25 Feb 2026. This is not an extended add/drop period.",
   ],
   [
-    "Feb 26, 2026 onwards",
-    "The enrolment records are taken as confirmed, and students will be admitted to the examinations for those courses that are listed in the Student Information System (SIS).",
+    "From 26 Feb 2026",
+    "Enrolment records are treated as final and used for examination entry.",
   ],
 ];
 
@@ -126,7 +126,7 @@ export const announcementContent = {
   publishedAt: "December 2025",
   keyDates: semesterKeyDates,
   highlights: [
-    { label: "Selection window", value: "Dec 19 - 31, 2025" },
+    { label: "Selection window", value: "19–31 Dec 2025" },
     { label: "Add / Drop deadline", value: semesterKeyDates.addDropClose },
     { label: "Result check", value: semesterKeyDates.resultCheckWindow },
     { label: "Maintenance", value: "Every Wednesday, 1:00pm - 2:00pm" },

@@ -55,7 +55,7 @@ const additionalElectXCourses = [
   }),
   createElectXCourse({
     code: "LATX7516",
-    title: "Aircraft stress analysis and finite element",
+    title: "Aircraft stress analysis and finite element analysis",
     department: "Aviation Engineering",
     requestOpen: true,
     seats: {
@@ -254,6 +254,7 @@ export const initialState = {
     number: 2,
     label: "Semester 2, 2025-26",
     academicYear: "2025-2026",
+    currentDate: "2026-01-23",
     announcementContent,
     keyDates: semesterKeyDates,
   },
@@ -306,7 +307,7 @@ export const initialState = {
     {
       id: "COMP7506-B-S2",
       code: "COMP7506",
-      title: "Smart phone apps development",
+      title: "Smartphone app development",
       faculty: "Faculty of Engineering",
       department: "Computer Science",
       semester: 2,
@@ -358,7 +359,7 @@ export const initialState = {
     {
       id: "IDAT7211-B-S2",
       code: "IDAT7211",
-      title: "Innovation and R&D principle",
+      title: "Innovation and R&D principles",
       faculty: "Faculty of Engineering",
       department: "Innovation Design and Technology",
       semester: 2,

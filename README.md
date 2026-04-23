@@ -1,10 +1,10 @@
-# Course Enrollment System
+# Course Enrolment System
 
-A dissertation-oriented full-stack course enrollment system for an HKU-style workflow. The current system focuses on:
+A dissertation-oriented full-stack course enrolment system for an HKU-style workflow. The current system focuses on:
 
 - a responsive React interface
 - a Node.js API with a rule/constraint engine
-- transparent enrollment decisions
+- transparent enrolment decisions
 - legacy pain-point fixes such as visible capacity, policy labels, conflict checks, and clearer request states
 
 The student-facing system is aligned to the dissertation short note by keeping announcement/window content backend-driven, using a canonical request status view, and preserving a separate admin-ready backend surface for future staff tooling.
@@ -30,7 +30,7 @@ The root script starts:
 - bootstrap responses also include a canonical `requestStatusView`, so `Results` remains the main student status page while `Cancel` stays a focused action view
 - supported flows:
   - browse and filter courses
-  - preview enrollment decisions before submitting
+  - preview enrolment decisions before submitting
   - submit requests
   - cancel pending requests
   - drop approved courses

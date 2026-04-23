@@ -124,7 +124,7 @@ function renderPage({
       semester={data.semester}
       summary={data.summary}
       systemMeta={systemMeta}
-      records={data.requestStatusView?.activeRequests ?? activeRequests}
+      records={data.requestStatusView?.withdrawableRequests ?? activeRequests.filter((record) => record.withdrawable)}
       busyCourseId={busyCourseId}
       onInspectRecord={handleRecordPreview}
       onAction={handlePrimaryAction}
@@ -134,10 +134,9 @@ function renderPage({
   );
 }
 
-function StudentPortalApp({ onOpenStaffConsole }) {
+function StudentPortalApp() {
   const lastCompactViewportRef = useRef(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [clockLabel, setClockLabel] = useState(() => formatClockLabel(new Date()));
   const {
     data,
     systemMeta,
@@ -154,7 +153,6 @@ function StudentPortalApp({ onOpenStaffConsole }) {
     activeRequests,
     handleTopLinkClick,
     handleNavigation,
-    handleReset,
     handleRefresh,
     handleSelectCourse,
     handlePreview,
@@ -166,16 +164,6 @@ function StudentPortalApp({ onOpenStaffConsole }) {
     closeConfirmAction,
     confirmPendingAction,
   } = usePortalController();
-
-  useEffect(() => {
-    function syncClock() {
-      setClockLabel(formatClockLabel(new Date()));
-    }
-
-    syncClock();
-    const timer = window.setInterval(syncClock, 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(SIDEBAR_COLLAPSE_QUERY);
@@ -212,7 +200,9 @@ function StudentPortalApp({ onOpenStaffConsole }) {
     );
   }
 
-  const showQuickDock = ["add", "results", "cancel"].includes(activePage);
+  const clockSource = data?.semester?.currentDate ? new Date(`${data.semester.currentDate}T12:00:00`) : new Date();
+  const clockLabel = formatClockLabel(clockSource);
+  const showQuickDock = activePage === "add";
   const showPageHeader = activePage !== "online";
 
   return (
@@ -249,17 +239,6 @@ function StudentPortalApp({ onOpenStaffConsole }) {
         </div>
         <div className="portal-links__meta">
           <span>{clockLabel}</span>
-          <button type="button" className="portal-reset portal-reset--secondary" onClick={onOpenStaffConsole}>
-            Staff Console
-          </button>
-          <button
-            type="button"
-            className="portal-reset"
-            onClick={handleReset}
-            disabled={busyCourseId === "reset" || busyCourseId === "logout"}
-          >
-            {busyCourseId === "reset" ? "Resetting…" : "Reset state"}
-          </button>
         </div>
       </div>
 
@@ -298,18 +277,16 @@ function StudentPortalApp({ onOpenStaffConsole }) {
           </nav>
         </aside>
 
-        <main className="portal-main">
+        <main className={showQuickDock ? "portal-main portal-main--with-quick-dock" : "portal-main"}>
           {showQuickDock ? (
-        <QuickGlanceDock
-          approvedCourses={data.approvedCourses}
-          activeRequests={activeRequests}
-          summary={data.summary}
-          systemMeta={systemMeta}
-          onNavigate={handleNavigation}
-          onRefresh={handleRefresh}
-          activePage={activePage}
-        />
-      ) : null}
+            <QuickGlanceDock
+              activeRequests={activeRequests}
+              summary={data.summary}
+              systemMeta={systemMeta}
+              onNavigate={handleNavigation}
+              activePage={activePage}
+            />
+          ) : null}
 
           {showPageHeader ? (
             <div className="page-header">
@@ -379,7 +356,7 @@ function App() {
     return <StaffAdminPage onReturnToPortal={() => navigateToSurface("student")} />;
   }
 
-  return <StudentPortalApp onOpenStaffConsole={() => navigateToSurface("staff")} />;
+  return <StudentPortalApp />;
 }
 
 export default App;

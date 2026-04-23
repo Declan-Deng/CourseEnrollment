@@ -3,6 +3,7 @@ import { createAuditEvent } from "./auditService.js";
 import { clone } from "./clone.js";
 import { previewEnrollmentDecision } from "./enrollmentDecisionService.js";
 import { formatRecordTimestamp } from "./requestTrackingService.js";
+import { getReferenceDate, isWindowCurrentlyOpen } from "./windowDates.js";
 
 function createActionResult({ ok, tone, headline, reasons, outcome }) {
   return { ok, tone, headline, reasons, outcome };
@@ -127,6 +128,7 @@ export function submitStudentRequest(snapshot, offeringId, { actor } = {}) {
 export function cancelStudentRequest(snapshot, offeringId, { actor } = {}) {
   const nextSnapshot = clone(snapshot);
   const request = findActiveRequest(nextSnapshot, offeringId);
+  const referenceDate = getReferenceDate(nextSnapshot.semester?.currentDate);
 
   if (!request) {
     return {
@@ -138,6 +140,16 @@ export function cancelStudentRequest(snapshot, offeringId, { actor } = {}) {
   }
 
   const offering = getOfferingMutable(nextSnapshot, offeringId);
+  if (!isWindowCurrentlyOpen(offering?.requestWindow, referenceDate)) {
+    return {
+      snapshot,
+      decision: createRejectedAction("Online withdrawal closed for this request.", [
+        `The withdrawal window closed on ${nextSnapshot.semester.keyDates?.requestClose ?? "the request deadline"}.`,
+        `Check ${nextSnapshot.semester.keyDates?.resultCheckWindow ?? "the final records window"} for updates instead.`,
+      ]),
+    };
+  }
+
   const effectiveActor = ensureActor(nextSnapshot, actor);
   const beforeRequest = clone(request);
   const beforeOffering = clone(offering);
@@ -179,6 +191,7 @@ export function cancelStudentRequest(snapshot, offeringId, { actor } = {}) {
 
 export function dropStudentEnrollment(snapshot, offeringId, { actor } = {}) {
   const nextSnapshot = clone(snapshot);
+  const referenceDate = getReferenceDate(nextSnapshot.semester?.currentDate);
   const enrollmentIndex = nextSnapshot.enrollments.findIndex(
     (enrollment) => enrollment.offeringId === offeringId && enrollment.status === "approved",
   );
@@ -194,7 +207,7 @@ export function dropStudentEnrollment(snapshot, offeringId, { actor } = {}) {
 
   const offering = getOfferingMutable(nextSnapshot, offeringId);
 
-  if (!offering?.dropWindow?.isOpen) {
+  if (!isWindowCurrentlyOpen(offering?.dropWindow, referenceDate)) {
     const isManualLock = offering?.allocationPolicy === "locked";
 
     return {

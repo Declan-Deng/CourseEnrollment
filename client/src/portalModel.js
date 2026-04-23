@@ -2,7 +2,7 @@ export const navItems = [
   { id: "add", label: "Course Center" },
   { id: "announcement", label: "Announcement" },
   { id: "results", label: "View Enrolment Results" },
-  { id: "cancel", label: "Cancel Enrolment Request" },
+  { id: "cancel", label: "Withdraw Requests" },
 ];
 
 export const topLinks = [
@@ -46,6 +46,13 @@ const SUBCLASS_CLASS_MAP = {
   b: "soft-tag soft-tag--subclass soft-tag--subclass-b",
   c: "soft-tag soft-tag--subclass soft-tag--subclass-c",
 };
+const LIST_TYPE_LABEL_MAP = {
+  dscpa: "Discipline A",
+  dscpb: "Discipline B",
+  diss: "Dissertation",
+  elective: "Elective",
+  electxc: "Cross-faculty elective",
+};
 const ROW_CLASS_BY_STATE = {
   approved: "portal-row--approved",
   lotteryQueued: "portal-row--lottery",
@@ -53,15 +60,15 @@ const ROW_CLASS_BY_STATE = {
   waitlist: "portal-row--waitlist",
 };
 const COURSE_GROUPS = [
-  { id: "enrolled", label: "Enrolled", description: "Already admitted to your plan", defaultExpanded: true },
   { id: "active", label: "Active Requests", description: "Requests still being processed", defaultExpanded: true },
   { id: "requestable", label: "Requestable", description: "Offerings you can act on now", defaultExpanded: true },
+  { id: "enrolled", label: "Enrolled", description: "Already admitted to your plan", defaultExpanded: false },
   { id: "blocked", label: "Blocked / Closed", description: "Unavailable under the current plan or window", defaultExpanded: false },
 ];
 const POLICY_DISPLAY_MAP = {
   firstComeFirstServed: { label: "FCFS", note: "Open online", variant: "fcfs" },
   lottery: { label: "Lottery", note: "Open pool", variant: "lottery" },
-  priorityReview: { label: "Review", note: "Faculty review", variant: "review" },
+  priorityReview: { label: "Faculty review", note: "Faculty queue", variant: "review" },
   locked: { label: "Closed", note: "Manual route", variant: "closed" },
 };
 const COURSE_CODE_PATTERN = /\b[A-Z]{4}\d{4}\b/g;
@@ -101,6 +108,10 @@ const CAPACITY_METRICS_CACHE = new WeakMap();
 const POLICY_META_CACHE = new WeakMap();
 const RULE_SUMMARY_CACHE = new WeakMap();
 const SCHEDULE_LABEL_CACHE = new WeakMap();
+
+function formatCountLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 export function createDefaultGroupViewControls() {
   return { ...DEFAULT_GROUP_VIEW_CONTROLS };
@@ -475,7 +486,7 @@ export function getPrimaryAction(course) {
   }
 
   if (isActiveRequestKind(course.currentState.kind)) {
-    return { key: "cancel", label: "Cancel", disabled: false };
+    return { key: "cancel", label: "Withdraw", disabled: false };
   }
 
   if (course.currentState.kind === "waitlistAvailable" || course.preview.outcome === "waitlist") {
@@ -499,6 +510,10 @@ export function getRecordTone(status) {
 
 export function getListTypeClass(listType) {
   return LIST_TYPE_CLASS_MAP[(listType ?? "").toLowerCase()] ?? "soft-tag";
+}
+
+export function getListTypeLabel(listType) {
+  return LIST_TYPE_LABEL_MAP[(listType ?? "").toLowerCase()] ?? listType;
 }
 
 export function getSubclassClass(subclass) {
@@ -550,6 +565,16 @@ export function getPolicyCompactMeta(course) {
   return meta;
 }
 
+export function getPolicyTagMeta(course) {
+  return (
+    POLICY_DISPLAY_MAP[course.allocationPolicy] ?? {
+      label: course.policyLabel,
+      note: "",
+      variant: "fcfs",
+    }
+  );
+}
+
 export function getRuleSummary(course) {
   if (RULE_SUMMARY_CACHE.has(course)) {
     return RULE_SUMMARY_CACHE.get(course);
@@ -573,58 +598,58 @@ export function getRuleSummary(course) {
   } else if (stateKind === "lotteryQueued") {
     summary = {
       variant: "lottery",
-      conclusion: "Request in progress",
+      conclusion: "Lottery queued",
       reasonText: "This course is already in your lottery pipeline.",
-      nextText: "Use Cancel if you want to withdraw this lottery request.",
+      nextText: "Use Withdraw if you want to remove this lottery request.",
       linkedCourseCode: null,
     };
   } else if (stateKind === "pendingReview") {
     summary = {
       variant: "review",
-      conclusion: "Request in progress",
+      conclusion: "Under faculty review",
       reasonText: "This course is already in faculty review.",
-      nextText: "Use Cancel if you want to withdraw this review request.",
+      nextText: "Use Withdraw if you want to remove this review request.",
       linkedCourseCode: null,
     };
   } else if (stateKind === "waitlist") {
     summary = {
       variant: "waitlist",
-      conclusion: "Request in progress",
+      conclusion: "On waitlist",
       reasonText: "This course is already in your waitlist pipeline.",
-      nextText: "Use Cancel if you want to withdraw this waitlist request.",
+      nextText: "Use Withdraw if you want to remove this waitlist request.",
       linkedCourseCode: null,
     };
   } else if (course.preview.ok) {
     if (course.preview.uiVariant === "lottery") {
       summary = {
         variant: "lottery",
-        conclusion: "Join lottery",
-        reasonText: "This offering uses lottery allocation.",
-        nextText: "Submit request to join the lottery pool.",
+        conclusion: "Lottery allocation",
+        reasonText: "This offering is allocated through a lottery pool rather than instant approval.",
+        nextText: "Use the Request button to enter the lottery pool before the deadline.",
         linkedCourseCode: null,
       };
     } else if (course.preview.uiVariant === "review") {
       summary = {
         variant: "review",
-        conclusion: "Send for review",
-        reasonText: "This offering uses faculty review instead of instant approval.",
-        nextText: "Submit request to enter the review queue.",
+        conclusion: "Faculty review",
+        reasonText: "This offering is processed through faculty review instead of instant approval.",
+        nextText: "Use the Request button to enter the faculty review queue.",
         linkedCourseCode: null,
       };
     } else if (course.preview.uiVariant === "waitlist") {
       summary = {
         variant: "waitlist",
-        conclusion: "Join waitlist",
+        conclusion: "Waitlist available",
         reasonText: "Seats are full, but the waitlist is still open.",
-        nextText: "Submit request to join the waitlist.",
+        nextText: "Use the Waitlist button if you want to join the queue.",
         linkedCourseCode: null,
       };
     } else {
       summary = {
         variant: "success",
-        conclusion: "Request now",
+        conclusion: "Eligible now",
         reasonText: "No timetable, prerequisite, co-requisite, quota, credit-limit, or duplicate issue was found.",
-        nextText: "Submit request now.",
+        nextText: "Use the Request button if you want to add this course to your plan.",
         linkedCourseCode: null,
       };
     }
@@ -758,6 +783,10 @@ export function buildRecordDialog(record) {
     reasons: [record.message],
     suggestedAction: record.nextStep,
   };
+}
+
+export function formatOfferingCount(count) {
+  return formatCountLabel(count, "offering");
 }
 
 export function toMinutes(value) {

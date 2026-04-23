@@ -45,6 +45,76 @@
   background-image: linear-gradient(rgba(60, 72, 96, 0.022), rgba(60, 72, 96, 0.022));
 }
 
+.portal-table--staff-requests {
+  table-layout: fixed;
+  min-width: 980px;
+}
+
+.portal-table--staff-requests th:nth-child(1),
+.portal-table--staff-requests td:nth-child(1) {
+  width: 4.1rem;
+}
+
+.portal-table--staff-requests th:nth-child(2),
+.portal-table--staff-requests td:nth-child(2) {
+  width: 11rem;
+}
+
+.portal-table--staff-requests th:nth-child(3),
+.portal-table--staff-requests td:nth-child(3) {
+  width: 7.2rem;
+}
+
+.portal-table--staff-requests th:nth-child(4),
+.portal-table--staff-requests td:nth-child(4) {
+  width: 9.8rem;
+}
+
+.portal-table--staff-requests th:nth-child(5),
+.portal-table--staff-requests td:nth-child(5) {
+  width: 10rem;
+}
+
+.portal-table--staff-requests th:nth-child(6),
+.portal-table--staff-requests td:nth-child(6) {
+  width: 8.6rem;
+}
+
+.portal-table--staff-overrides {
+  table-layout: fixed;
+  min-width: 920px;
+}
+
+.portal-table--staff-overrides th:nth-child(1),
+.portal-table--staff-overrides td:nth-child(1) {
+  width: 14rem;
+}
+
+.portal-table--staff-overrides th:nth-child(2),
+.portal-table--staff-overrides td:nth-child(2) {
+  width: 7.4rem;
+}
+
+.portal-table--staff-overrides th:nth-child(3),
+.portal-table--staff-overrides td:nth-child(3) {
+  width: 9.5rem;
+}
+
+.portal-table--staff-overrides th:nth-child(5),
+.portal-table--staff-overrides td:nth-child(5) {
+  width: 9.8rem;
+}
+
+.portal-table--staff-overrides th:nth-child(6),
+.portal-table--staff-overrides td:nth-child(6) {
+  width: 4.6rem;
+}
+
+.portal-table--staff-overrides th:nth-child(7),
+.portal-table--staff-overrides td:nth-child(7) {
+  width: 5.8rem;
+}
+
 .portal-row {
   transition: background 120ms ease;
   cursor: default;
@@ -325,7 +395,7 @@
 
 .cell-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.3rem;
 }
 
@@ -380,6 +450,7 @@
   color: var(--text-dark);
   padding: 0.22rem 0.42rem;
   border-radius: 4px;
+  white-space: nowrap;
 }
 
 .mini-button--primary {
@@ -390,6 +461,12 @@
   background: linear-gradient(180deg, #fbe3df, #efb8ae);
   border-color: #d09489;
   color: #8a2d20;
+}
+
+.portal-reset--danger {
+  background: rgba(130, 52, 38, 0.42);
+  border-color: rgba(255, 232, 225, 0.44);
+  color: #fff4ef;
 }
 
 .mini-button--active {
@@ -444,47 +521,6 @@
   color: #6a603a;
   font-size: 0.79rem;
   line-height: 1.35;
-}
-
-.course-status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  padding: 0.54rem 0.72rem 0.14rem;
-}
-
-.course-status-chip {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0.22rem 0.52rem;
-  font-size: 0.75rem;
-  font-weight: 800;
-  border: 1px solid transparent;
-}
-
-.course-status-chip--enrolled {
-  background: rgba(220, 236, 214, 0.98);
-  border-color: rgba(111, 153, 99, 0.28);
-  color: #2f5529;
-}
-
-.course-status-chip--requestable {
-  background: rgba(245, 241, 206, 0.98);
-  border-color: rgba(171, 151, 88, 0.28);
-  color: #6c5717;
-}
-
-.course-status-chip--active {
-  background: rgba(219, 230, 246, 0.98);
-  border-color: rgba(105, 132, 171, 0.28);
-  color: #34577d;
-}
-
-.course-status-chip--blocked {
-  background: rgba(233, 235, 238, 0.98);
-  border-color: rgba(146, 150, 157, 0.28);
-  color: #575f69;
 }
 
 .summary-strip {
@@ -562,7 +598,7 @@
 
 .summary-strip__metrics {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0.34rem;
 }
 
@@ -659,6 +695,31 @@
   line-height: 1.38;
 }
 
+.announcement-summary-copy {
+  display: grid;
+  gap: 0.14rem;
+  padding: 0 0.8rem 0.8rem;
+}
+
+.announcement-summary-copy strong {
+  color: var(--subheading);
+}
+
+.announcement-summary-copy span {
+  color: var(--muted);
+}
+
+.announcement-guidance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.35rem 0.7rem;
+  padding: 0.42rem 0.72rem 0.52rem;
+}
+
+.announcement-guidance p {
+  padding: 0;
+}
+
 .window-status-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -742,6 +803,10 @@
   grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
   gap: 0.55rem;
   padding: 0.5rem 0.6rem 0.62rem;
+}
+
+.page-panel--inspection-collapsed {
+  background: #e4e5f3;
 }
 
 .inspection-card {
@@ -853,6 +918,11 @@
   border-top: 1px solid rgba(151, 157, 196, 0.18);
 }
 
+.selected-course-summary--empty .selected-course-summary__line {
+  padding-top: 0;
+  border-top: 0;
+}
+
 .selected-course-summary__line strong {
   color: var(--subheading);
   font-size: 0.72rem;
@@ -884,7 +954,7 @@
   border: 0;
   background: rgba(236, 238, 246, 0.86);
   border-bottom: 1px solid rgba(151, 157, 196, 0.28);
-  padding: 0.42rem 0.62rem;
+  padding: 0.38rem 0.62rem;
   color: var(--subheading);
   text-align: left;
 }
@@ -988,6 +1058,7 @@
 
 .course-group__note-inner {
   overflow: clip;
+  padding: 0.34rem 0.62rem 0.42rem;
 }
 
 .course-group__compact-note {
@@ -1167,6 +1238,7 @@
   padding: 0.14rem 0.42rem;
   font-size: 0.73rem;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .rule-preview__toggle:hover,
@@ -1374,6 +1446,57 @@
   padding: 0 0.75rem 0.75rem;
 }
 
+.withdraw-card-stack {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.55rem 0.75rem 0.55rem;
+}
+
+.withdraw-card {
+  border: 1px solid rgba(153, 156, 187, 0.34);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.7);
+  display: grid;
+  gap: 0.42rem;
+  padding: 0.6rem 0.72rem;
+}
+
+.withdraw-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.withdraw-card__meta,
+.withdraw-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.6rem;
+  align-items: center;
+}
+
+.withdraw-card__meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.withdraw-card__copy {
+  display: grid;
+  gap: 0.12rem;
+}
+
+.withdraw-card__copy p {
+  padding: 0;
+}
+
+.withdraw-card-note {
+  padding: 0 0.75rem 0.72rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .toolbar-grid {
   display: flex;
   flex-wrap: nowrap;
@@ -1432,6 +1555,13 @@
   color: var(--subheading);
   font-size: 0.88rem;
   line-height: 1.2;
+}
+
+.toolbar-section__hint {
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .toolbar-section--actions {

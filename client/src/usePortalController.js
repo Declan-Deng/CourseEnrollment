@@ -281,7 +281,7 @@ export function usePortalController() {
       courseId: course.id,
       tone: "warn",
       title: "Dropped from Current Enrolment",
-      detail:
+        detail:
         nextGroup === "requestable"
           ? `${course.code} was removed and is now available to request again.`
           : `${course.code} was removed and related rule checks were refreshed.`,
@@ -374,8 +374,8 @@ export function usePortalController() {
     if (action.key === "cancel") {
       setConfirmAction({
         course,
-        title: `Cancel request for ${course.code}?`,
-        detail: "This will remove the course from your active request pipeline.",
+        title: `Withdraw request for ${course.code}?`,
+        detail: "This will withdraw the course from your active request pipeline.",
       });
       return;
     }

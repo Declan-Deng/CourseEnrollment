@@ -33,7 +33,7 @@ export function OnlineEnrolmentPage({ semester, announcementContent }) {
     <div className="legacy-enrolment">
       {highlights.length ? (
         <section className="page-panel page-panel--focus">
-          <h3>What matters now</h3>
+          <h3>Current cycle snapshot</h3>
           <div className="announcement-highlights">
             {highlights.map((item) => (
               <div key={`${item.label}-${item.value}`} className="announcement-highlight">
@@ -43,6 +43,7 @@ export function OnlineEnrolmentPage({ semester, announcementContent }) {
             ))}
           </div>
           <nav className="announcement-jumps" aria-label="Online enrolment page sections">
+            <span className="announcement-jumps__label">Jump to</span>
             <a href="#online-schedule">Schedule</a>
             <a href="#online-guidelines">Guidelines</a>
             <a href="#online-study-load">Study Load</a>
@@ -74,7 +75,7 @@ export function OnlineEnrolmentPage({ semester, announcementContent }) {
           title={`Course Selection Schedule (${semesterTitle})`}
           rows={content.selectionSchedule}
         />
-        <ScheduleTable title={`ADD/DROP Schedule (${semesterTitle})`} rows={content.addDropSchedule} />
+        <ScheduleTable title={`Add / Drop schedule (${semesterTitle})`} rows={content.addDropSchedule} />
 
         <p className="legacy-enrolment__signature">
           {content.publishedBy}

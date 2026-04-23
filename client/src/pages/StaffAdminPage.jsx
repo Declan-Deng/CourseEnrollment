@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  createAdminCourse,
+  createAdminOffering,
   createAdminOverride,
+  fetchAdminCourses,
   DEFAULT_STAFF_ACTOR_ID,
   deleteAdminOverride,
   fetchAdminAudit,
@@ -17,41 +20,126 @@ import {
 import { Banner, ConfirmDialog } from "../components/PortalFeedback";
 import {
   buildBatchResolveDetail,
+  buildDefaultCourseForm,
   buildDefaultOverrideForm,
+  buildDefaultOfferingCreateForm,
+  buildAuditEventChange,
+  buildAuditEventSummary,
+  buildAuditPayloadRows,
   buildOfferingForm,
   buildOfferingPreviewDetail,
   buildOverrideImpactNote,
   buildRequestPreviewDetail,
-  compactJson,
+  formatCompactId,
   formatDecisionTone,
+  formatAuditActionLabel,
+  formatAuditActorLabel,
+  formatAuditTargetLabel,
   formatPolicyLabel,
   formatRequestStatusLabel,
   formatResolutionActionLabel,
+  formatSeatCount,
+  formatStaffDateTime,
   formatSeatOccupantTimestamp,
   formatStaffTimestamp,
   formatWindow,
+  getRequestWorkflow,
   hasOverrideImpactChange,
   includesText,
+  isResolutionActionAllowed,
   matchesOfferingWindow,
   OVERRIDE_OPTIONS,
   parseNonNegativeInteger,
+  RESOLUTION_ACTION_OPTIONS,
+  STAFF_DAY_OPTIONS,
+  STAFF_LIST_TYPE_OPTIONS,
+  STAFF_POLICY_OPTIONS,
   REQUEST_STATUS_OPTIONS,
   STAFF_TABS,
+  normalizeCourseCode,
+  normalizeSubclass,
   toErrorHeadline,
   toFriendlyError,
 } from "../staffConsoleModel";
+
+const STAFF_MONTH_OPTIONS = [
+  ["01", "Jan"],
+  ["02", "Feb"],
+  ["03", "Mar"],
+  ["04", "Apr"],
+  ["05", "May"],
+  ["06", "Jun"],
+  ["07", "Jul"],
+  ["08", "Aug"],
+  ["09", "Sep"],
+  ["10", "Oct"],
+  ["11", "Nov"],
+  ["12", "Dec"],
+];
+
+const STAFF_DATE_YEARS = ["2025", "2026", "2027"];
+
+function readIsoDateParts(value) {
+  const [year = "2026", month = "01", day = "31"] = String(value || "2026-01-31").split("-");
+  return {
+    year,
+    month: month.padStart(2, "0"),
+    day: day.padStart(2, "0"),
+  };
+}
+
+function buildIsoDate(parts) {
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function StaffDateField({ value, onChange, label }) {
+  const parts = readIsoDateParts(value);
+
+  function updatePart(key, nextValue) {
+    onChange(buildIsoDate({ ...parts, [key]: nextValue }));
+  }
+
+  return (
+    <div className="staff-date-field" aria-label={label}>
+      <select value={parts.day} onChange={(event) => updatePart("day", event.target.value)} aria-label={`${label} day`}>
+        {Array.from({ length: 31 }, (_, index) => String(index + 1).padStart(2, "0")).map((day) => (
+          <option key={day} value={day}>
+            {Number.parseInt(day, 10)}
+          </option>
+        ))}
+      </select>
+      <select value={parts.month} onChange={(event) => updatePart("month", event.target.value)} aria-label={`${label} month`}>
+        {STAFF_MONTH_OPTIONS.map(([monthValue, monthLabel]) => (
+          <option key={monthValue} value={monthValue}>
+            {monthLabel}
+          </option>
+        ))}
+      </select>
+      <select value={parts.year} onChange={(event) => updatePart("year", event.target.value)} aria-label={`${label} year`}>
+        {STAFF_DATE_YEARS.map((year) => (
+          <option key={year} value={year}>
+            {year}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 export function StaffAdminPage({ onReturnToPortal }) {
   const [activeTab, setActiveTab] = useState("offerings");
   const [dangerExpanded, setDangerExpanded] = useState(false);
   const [actorId, setActorId] = useState(DEFAULT_STAFF_ACTOR_ID);
+  const [courses, setCourses] = useState([]);
   const [offerings, setOfferings] = useState([]);
   const [requests, setRequests] = useState([]);
   const [overrides, setOverrides] = useState([]);
   const [auditEvents, setAuditEvents] = useState([]);
   const [selectedOfferingId, setSelectedOfferingId] = useState("");
   const [selectedRequestId, setSelectedRequestId] = useState("");
+  const [courseForm, setCourseForm] = useState(buildDefaultCourseForm());
   const [offeringForm, setOfferingForm] = useState(null);
+  const [offeringCreateForm, setOfferingCreateForm] = useState(buildDefaultOfferingCreateForm());
   const [overrideForm, setOverrideForm] = useState(buildDefaultOverrideForm());
   const [requestResolutionNote, setRequestResolutionNote] = useState("Resolved in staff console.");
   const [offeringSearch, setOfferingSearch] = useState("");
@@ -88,14 +176,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const [banner, setBanner] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
-  async function loadAll(nextActorId = actorId) {
-    const [nextOfferings, nextRequests, nextOverrides, nextAuditEvents] = await Promise.all([
+  async function loadAll(nextActorId = actorId, preferredSelections = {}) {
+    const [nextCourses, nextOfferings, nextRequests, nextOverrides, nextAuditEvents] = await Promise.all([
+      fetchAdminCourses(nextActorId),
       fetchAdminOfferings(nextActorId),
       fetchAdminRequests({}, nextActorId),
       fetchAdminOverrides({}, nextActorId),
       fetchAdminAudit({}, nextActorId),
     ]);
 
+    setCourses(nextCourses);
     setOfferings(nextOfferings);
     setRequests(nextRequests);
     setOverrides(nextOverrides);
@@ -103,7 +193,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setLastLoadedAt(new Date().toISOString());
 
     const resolvedOffering =
-      nextOfferings.find((item) => item.id === selectedOfferingId) ??
+      nextOfferings.find((item) => item.id === (preferredSelections.offeringId ?? selectedOfferingId)) ??
       nextOfferings[0] ??
       null;
 
@@ -117,12 +207,19 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
     const preferredRequests = activeOnly ? nextRequests.filter((item) => item.active) : nextRequests;
     const resolvedRequest =
-      preferredRequests.find((item) => item.id === selectedRequestId) ??
+      preferredRequests.find((item) => item.id === (preferredSelections.requestId ?? selectedRequestId)) ??
       preferredRequests[0] ??
       nextRequests[0] ??
       null;
 
     setSelectedRequestId(resolvedRequest?.id ?? "");
+    return {
+      courses: nextCourses,
+      offerings: nextOfferings,
+      requests: nextRequests,
+      overrides: nextOverrides,
+      auditEvents: nextAuditEvents,
+    };
   }
 
   useEffect(() => {
@@ -188,6 +285,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
           const haystack = [
             offering.courseCode,
             offering.id,
+            offering.title,
+            offering.faculty,
+            offering.department,
             offering.allocationPolicy,
             offering.requestWindow?.closesOn,
             offering.dropWindow?.closesOn,
@@ -248,6 +348,18 @@ export function StaffAdminPage({ onReturnToPortal }) {
     [activeOnly, requestSearch, requestStatusFilter, requests],
   );
   const selectedRequest = visibleRequests.find((item) => item.id === selectedRequestId) ?? null;
+  const offeringById = useMemo(
+    () => new Map(offerings.map((offering) => [offering.id, offering])),
+    [offerings],
+  );
+  const selectedRequestOffering = selectedRequest ? offeringById.get(selectedRequest.offeringId) ?? null : null;
+  const selectedRequestWorkflow = useMemo(
+    () => getRequestWorkflow(selectedRequest, selectedRequestOffering),
+    [selectedRequest, selectedRequestOffering],
+  );
+  const allowedRequestActions = selectedRequestWorkflow.allowedActions;
+  const selectedRequestActionAllowed =
+    Boolean(requestPreviewAction) && allowedRequestActions.includes(requestPreviewAction);
   const visibleSeatOccupants = useMemo(() => {
     const occupants = offeringImpact?.seatOccupants ?? [];
     const filtered = !offeringSeatSearch.trim()
@@ -281,26 +393,25 @@ export function StaffAdminPage({ onReturnToPortal }) {
     () => selectedVisibleRequests.filter((request) => request.active).length,
     [selectedVisibleRequests],
   );
+  const selectedRequestCount = selectedVisibleRequests.length;
   const offeringValidation = useMemo(() => {
     if (!selectedOffering || !offeringForm) {
       return { valid: false, detail: "Select an offering before editing its shared state." };
     }
 
     const capacity = parseNonNegativeInteger(offeringForm.capacity);
-    const seatsTaken = parseNonNegativeInteger(offeringForm.seatsTaken);
-    const waitlistCount = parseNonNegativeInteger(offeringForm.waitlistCount);
 
-    if (capacity === null || seatsTaken === null || waitlistCount === null) {
-      return { valid: false, detail: "Capacity, seats taken, and waitlist must all be non-negative integers." };
+    if (capacity === null) {
+      return { valid: false, detail: "Capacity must be a non-negative integer." };
     }
 
-    if (capacity < seatsTaken) {
-      return { valid: false, detail: "Capacity cannot be lower than seats taken." };
+    if (selectedOffering && capacity < selectedOffering.seatsTaken) {
+      return { valid: false, detail: "Capacity cannot be lower than the current seats taken count." };
     }
 
     return { valid: true, detail: "" };
   }, [offeringForm, selectedOffering]);
-  const requestResolutionDisabled = !selectedRequest?.active;
+  const requestResolutionDisabled = !selectedRequest?.active || !selectedRequestActionAllowed;
   const visibleOverrides = useMemo(
     () =>
       overrides.filter((override) => {
@@ -363,6 +474,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
     [auditActionFilter, auditActorFilter, auditActorIdFilter, auditEvents, auditTargetFilter, auditTargetTypeFilter],
   );
   const selectedAuditEvent = visibleAuditEvents.find((item) => item.id === selectedAuditId) ?? null;
+  const selectedAuditBeforeRows = useMemo(
+    () => buildAuditPayloadRows(selectedAuditEvent?.before),
+    [selectedAuditEvent?.before],
+  );
+  const selectedAuditAfterRows = useMemo(
+    () => buildAuditPayloadRows(selectedAuditEvent?.after),
+    [selectedAuditEvent?.after],
+  );
   const auditSummary = useMemo(
     () => ({
       total: auditEvents.length,
@@ -381,6 +500,113 @@ export function StaffAdminPage({ onReturnToPortal }) {
     () => [...new Set(auditEvents.map((item) => item.targetType))].sort((left, right) => left.localeCompare(right)),
     [auditEvents],
   );
+  const courseCodeOptions = useMemo(
+    () => [...courses].sort((left, right) => left.code.localeCompare(right.code)),
+    [courses],
+  );
+  const pendingOfferingId = useMemo(() => {
+    const courseCode = normalizeCourseCode(offeringCreateForm.courseCode);
+    const subclass = normalizeSubclass(offeringCreateForm.subclass);
+    const semester = Number.parseInt(offeringCreateForm.semester, 10);
+
+    if (!courseCode || !subclass || !Number.isInteger(semester) || semester < 1) {
+      return "";
+    }
+
+    return `${courseCode}-${subclass}-S${semester}`;
+  }, [offeringCreateForm.courseCode, offeringCreateForm.semester, offeringCreateForm.subclass]);
+  const courseValidation = useMemo(() => {
+    const missingFields = [];
+    const code = normalizeCourseCode(courseForm.code);
+    if (!code) {
+      missingFields.push("course code");
+    }
+    if (!courseForm.title.trim()) {
+      missingFields.push("title");
+    }
+    if (!courseForm.faculty.trim()) {
+      missingFields.push("faculty");
+    }
+    if (!courseForm.department.trim()) {
+      missingFields.push("department");
+    }
+
+    if (missingFields.length) {
+      return { valid: false, detail: `Required before creating: ${missingFields.join(", ")}.` };
+    }
+
+    const credits = parseNonNegativeInteger(courseForm.credits);
+    if (credits === null) {
+      return { valid: false, detail: "Credits must be a non-negative integer." };
+    }
+
+    if (courses.some((course) => course.code === code)) {
+      return { valid: false, detail: `Course ${code} already exists.` };
+    }
+
+    return { valid: true, detail: "" };
+  }, [courseForm.code, courseForm.credits, courseForm.department, courseForm.faculty, courseForm.title, courses]);
+  const overrideValidation = useMemo(() => {
+    const missingFields = [];
+
+    if (!overrideForm.studentId.trim()) {
+      missingFields.push("student ID");
+    }
+    if (!overrideForm.offeringId) {
+      missingFields.push("offering");
+    }
+    if (!overrideForm.constraintTypes.length) {
+      missingFields.push("constraint type");
+    }
+
+    if (missingFields.length) {
+      return { valid: false, detail: `Required before creating: ${missingFields.join(", ")}.` };
+    }
+
+    return { valid: true, detail: "" };
+  }, [overrideForm.constraintTypes.length, overrideForm.offeringId, overrideForm.studentId]);
+  const offeringCreateValidation = useMemo(() => {
+    const courseCode = normalizeCourseCode(offeringCreateForm.courseCode);
+    const capacity = parseNonNegativeInteger(offeringCreateForm.capacity);
+
+    if (!courseCode || !courses.some((course) => course.code === courseCode)) {
+      return { valid: false, detail: "Choose an existing course before creating an offering." };
+    }
+
+    if (!normalizeSubclass(offeringCreateForm.subclass)) {
+      return { valid: false, detail: "Subclass is required." };
+    }
+
+    if (!Number.isInteger(Number.parseInt(offeringCreateForm.semester, 10)) || Number.parseInt(offeringCreateForm.semester, 10) < 1) {
+      return { valid: false, detail: "Semester must be a positive integer." };
+    }
+
+    if (capacity === null) {
+      return { valid: false, detail: "Capacity must be a non-negative integer." };
+    }
+
+    if (!offeringCreateForm.scheduleDay || !offeringCreateForm.scheduleStart || !offeringCreateForm.scheduleEnd) {
+      return { valid: false, detail: "A teaching day, start time, and end time are required." };
+    }
+
+    if (pendingOfferingId && offerings.some((offering) => offering.id === pendingOfferingId)) {
+      return { valid: false, detail: `Offering ${pendingOfferingId} already exists.` };
+    }
+
+    return { valid: true, detail: "" };
+  }, [
+    courseCodeOptions,
+    courses,
+    offeringCreateForm.capacity,
+    offeringCreateForm.courseCode,
+    offeringCreateForm.scheduleDay,
+    offeringCreateForm.scheduleEnd,
+    offeringCreateForm.scheduleStart,
+    offeringCreateForm.semester,
+    offeringCreateForm.subclass,
+    offerings,
+    pendingOfferingId,
+  ]);
 
   useEffect(() => {
     setSelectedOfferingId((current) => {
@@ -406,6 +632,12 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }, [visibleRequests]);
 
   useEffect(() => {
+    setRequestPreviewAction((current) =>
+      allowedRequestActions.includes(current) ? current : allowedRequestActions[0] ?? "",
+    );
+  }, [allowedRequestActions]);
+
+  useEffect(() => {
     setSelectedRequestIds((current) => current.filter((id) => visibleRequests.some((item) => item.id === id)));
   }, [visibleRequests]);
 
@@ -428,6 +660,21 @@ export function StaffAdminPage({ onReturnToPortal }) {
       return visibleAuditEvents.some((item) => item.id === current) ? current : visibleAuditEvents[0].id;
     });
   }, [visibleAuditEvents]);
+
+  useEffect(() => {
+    if (!courseCodeOptions.length) {
+      return;
+    }
+
+    setOfferingCreateForm((current) =>
+      current.courseCode
+        ? current
+        : {
+            ...current,
+            courseCode: courseCodeOptions[0].code,
+          },
+    );
+  }, [courseCodeOptions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -496,8 +743,8 @@ export function StaffAdminPage({ onReturnToPortal }) {
           selectedOffering.id,
           {
             capacity: Number.parseInt(offeringForm.capacity, 10),
-            seatsTaken: Number.parseInt(offeringForm.seatsTaken, 10),
-            waitlistCount: Number.parseInt(offeringForm.waitlistCount, 10),
+            seatsTaken: selectedOffering.seatsTaken,
+            waitlistCount: selectedOffering.waitlistCount,
             allocationPolicy: offeringForm.allocationPolicy,
             requestWindow: {
               isOpen: offeringForm.requestWindowOpen,
@@ -541,7 +788,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
     let cancelled = false;
 
     async function loadRequestPreview() {
-      if (!selectedRequest || requestResolutionDisabled) {
+      if (!selectedRequest || !requestPreviewAction || !selectedRequestActionAllowed) {
         setRequestPreviewImpact(null);
         setRequestPreviewBusy(false);
         return;
@@ -592,7 +839,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
     return () => {
       cancelled = true;
     };
-  }, [actorId, requestPreviewAction, requestResolutionDisabled, requestResolutionNote, selectedRequest]);
+  }, [actorId, requestPreviewAction, requestResolutionNote, selectedRequest, selectedRequestActionAllowed]);
 
   function showBanner(tone, title, detail) {
     setBanner({ tone, title, detail });
@@ -617,6 +864,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setOfferingImpactDetail("");
     setOfferingSeatSearch("");
     setOfferingSeatSortKey("timeDesc");
+  }
+
+  function updateCourseForm(field, value) {
+    setCourseForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function updateOfferingCreateForm(field, value) {
+    setOfferingCreateForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
   }
 
   function toggleOverrideConstraint(constraintId) {
@@ -667,8 +928,6 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
     const patch = {
       capacity: Number.parseInt(offeringForm.capacity, 10),
-      seatsTaken: Number.parseInt(offeringForm.seatsTaken, 10),
-      waitlistCount: Number.parseInt(offeringForm.waitlistCount, 10),
       allocationPolicy: offeringForm.allocationPolicy,
       requestWindow: {
         isOpen: offeringForm.requestWindowOpen,
@@ -699,8 +958,129 @@ export function StaffAdminPage({ onReturnToPortal }) {
     });
   }
 
+  async function handleCreateCourse() {
+    if (!courseValidation.valid) {
+      showBanner("error", "Course form is incomplete.", courseValidation.detail);
+      return;
+    }
+
+    setBusyKey("course:create");
+
+    try {
+      const created = await createAdminCourse(
+        {
+          code: normalizeCourseCode(courseForm.code),
+          title: courseForm.title.trim(),
+          faculty: courseForm.faculty.trim(),
+          department: courseForm.department.trim(),
+          listType: courseForm.listType,
+          credits: Number.parseInt(courseForm.credits, 10),
+          crossFaculty: courseForm.crossFaculty,
+          synopsis: courseForm.synopsis.trim(),
+        },
+        actorId,
+      );
+      await loadAll(actorId);
+      setCourseForm(buildDefaultCourseForm());
+      setOfferingCreateForm((current) => ({
+        ...current,
+        courseCode: created.course.code,
+      }));
+      showBanner("success", `${created.course.code} created.`, "The new course is now available for offering setup.");
+    } catch (error) {
+      showBanner("error", toErrorHeadline(error), toFriendlyError(error));
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  function handleConfirmCreateCourse() {
+    if (!courseValidation.valid) {
+      showBanner("error", "Course form is incomplete.", courseValidation.detail);
+      return;
+    }
+
+    const code = normalizeCourseCode(courseForm.code);
+    setConfirmAction({
+      title: `Create course ${code}?`,
+      detail: `This will add ${code} to the shared course catalog.`,
+      onConfirm: handleCreateCourse,
+    });
+  }
+
+  async function handleCreateOffering() {
+    if (!offeringCreateValidation.valid) {
+      return;
+    }
+
+    setBusyKey("offering:create");
+
+    try {
+      const created = await createAdminOffering(
+        {
+          courseCode: normalizeCourseCode(offeringCreateForm.courseCode),
+          semester: Number.parseInt(offeringCreateForm.semester, 10),
+          subclass: normalizeSubclass(offeringCreateForm.subclass),
+          allocationPolicy: offeringCreateForm.allocationPolicy,
+          capacity: Number.parseInt(offeringCreateForm.capacity, 10),
+          requestWindow: {
+            isOpen: offeringCreateForm.requestWindowOpen,
+            closesOn: offeringCreateForm.requestWindowClosesOn,
+          },
+          dropWindow: {
+            isOpen: offeringCreateForm.dropWindowOpen,
+            closesOn: offeringCreateForm.dropWindowClosesOn,
+          },
+          schedule: [
+            {
+              day: offeringCreateForm.scheduleDay,
+              start: offeringCreateForm.scheduleStart,
+              end: offeringCreateForm.scheduleEnd,
+              venue: offeringCreateForm.venue.trim(),
+            },
+          ],
+          prerequisites: offeringCreateForm.prerequisites,
+          corequisites: offeringCreateForm.corequisites,
+        },
+        actorId,
+      );
+      await loadAll(actorId, { offeringId: created.offering.id });
+      setSelectedOfferingId(created.offering.id);
+      setOfferingCreateForm((current) => ({
+        ...buildDefaultOfferingCreateForm(current.courseCode),
+        courseCode: current.courseCode,
+      }));
+      showBanner("success", `${created.offering.id} created.`, "The new offering is ready for review and further edits.");
+    } catch (error) {
+      showBanner("error", toErrorHeadline(error), toFriendlyError(error));
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  function handleConfirmCreateOffering() {
+    if (!offeringCreateValidation.valid) {
+      return;
+    }
+
+    setConfirmAction({
+      title: `Create offering ${pendingOfferingId}?`,
+      detail: `This will add a new ${formatPolicyLabel(offeringCreateForm.allocationPolicy)} offering for ${normalizeCourseCode(offeringCreateForm.courseCode)}.`,
+      onConfirm: handleCreateOffering,
+    });
+  }
+
   async function handleResolveRequest(action) {
     if (!selectedRequest) {
+      return;
+    }
+
+    if (!isResolutionActionAllowed(selectedRequest, selectedRequestOffering, action)) {
+      showBanner(
+        "error",
+        "Action blocked by workflow.",
+        "This request type does not support the selected staff resolution action.",
+      );
       return;
     }
 
@@ -715,27 +1095,33 @@ export function StaffAdminPage({ onReturnToPortal }) {
           },
           actorId,
         ),
-      `Request ${selectedRequest.id} resolved as ${action}.`,
+      `Request ${selectedRequest.id} resolved as ${formatResolutionActionLabel(action).toLowerCase()}.`,
     );
   }
 
   function handleConfirmResolveRequest(action) {
-    if (!selectedRequest || requestResolutionDisabled) {
+    if (!selectedRequest || !isResolutionActionAllowed(selectedRequest, selectedRequestOffering, action)) {
       return;
     }
 
     setConfirmAction({
-      title: `Resolve ${selectedRequest.id} as ${action}?`,
+      title: `${formatResolutionActionLabel(action)} for ${selectedRequest.id}?`,
       detail: buildRequestPreviewDetail(selectedRequest, action, requestPreviewImpact),
       onConfirm: () => handleResolveRequest(action),
     });
   }
 
   async function handleBatchResolve(action) {
-    const resolvable = selectedVisibleRequests.filter((request) => request.active);
+    const resolvable = selectedVisibleRequests.filter((request) =>
+      request.active && isResolutionActionAllowed(request, offeringById.get(request.offeringId), action),
+    );
 
     if (!resolvable.length) {
-      showBanner("error", "No active requests selected.", "Select one or more active requests before running a batch action.");
+      showBanner(
+        "error",
+        "No eligible requests selected.",
+        "Select active requests that support this action under their allocation policy.",
+      );
       return;
     }
 
@@ -771,7 +1157,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
         const firstFailure = failed[0];
         showBanner(
           "warn",
-          `${succeeded.length} request(s) resolved as ${action}; ${failed.length} failed.`,
+          `${succeeded.length} request(s) resolved as ${formatResolutionActionLabel(action).toLowerCase()}; ${failed.length} failed.`,
           `${firstFailure.id}: ${toFriendlyError(firstFailure.error)}`,
         );
         return;
@@ -783,7 +1169,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
         return;
       }
 
-      showBanner("success", `${succeeded.length} request(s) resolved as ${action}.`, "The shared state has been refreshed.");
+      showBanner(
+        "success",
+        `${succeeded.length} request(s) resolved as ${formatResolutionActionLabel(action).toLowerCase()}.`,
+        "The shared state has been refreshed.",
+      );
     } catch (error) {
       showBanner("error", toErrorHeadline(error), toFriendlyError(error));
     } finally {
@@ -792,22 +1182,8 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }
 
   async function handleCreateOverride() {
-    if (!overrideForm.studentId.trim()) {
-      showBanner("error", "Student ID is required.", "Enter a student ID before creating an override.");
-      return;
-    }
-
-    if (!overrideForm.offeringId) {
-      showBanner("error", "Offering is required.", "Choose the target offering before creating an override.");
-      return;
-    }
-
-    if (!overrideForm.constraintTypes.length) {
-      showBanner(
-        "error",
-        "Select at least one constraint.",
-        "Choose the exact constraint types that should be bypassed for this student.",
-      );
+    if (!overrideValidation.valid) {
+      showBanner("error", "Override form is incomplete.", overrideValidation.detail);
       return;
     }
 
@@ -874,27 +1250,42 @@ export function StaffAdminPage({ onReturnToPortal }) {
       queued: requests.filter((item) => item.status === "lotteryQueued" || item.status === "pendingReview").length,
       waitlist: requests.filter((item) => item.status === "waitlist" && item.active).length,
       visible: visibleRequests.length,
-      selected: selectedActiveRequestCount,
+      selected: selectedRequestCount,
     }),
-    [requests, selectedActiveRequestCount, visibleRequests.length],
+    [requests, selectedRequestCount, visibleRequests.length],
   );
-  const requestBatchPreview = useMemo(() => {
+  const requestBatchPreviews = useMemo(() => {
     const selectedCount = selectedVisibleRequests.length;
-    const eligibleCount = selectedActiveRequestCount;
-    const skippedCount = Math.max(selectedCount - eligibleCount, 0);
-    const queuedCount = selectedVisibleRequests.filter(
-      (request) => request.status === "lotteryQueued" || request.status === "pendingReview",
-    ).length;
+    const lotteryCount = selectedVisibleRequests.filter((request) => {
+      const workflow = getRequestWorkflow(request, offeringById.get(request.offeringId));
+      return workflow.mode === "lottery";
+    }).length;
+    const reviewCount = selectedVisibleRequests.filter((request) => {
+      const workflow = getRequestWorkflow(request, offeringById.get(request.offeringId));
+      return workflow.mode === "review";
+    }).length;
     const waitlistCount = selectedVisibleRequests.filter((request) => request.status === "waitlist" && request.active).length;
 
-    return {
-      selectedCount,
-      eligibleCount,
-      skippedCount,
-      queuedCount,
-      waitlistCount,
-    };
-  }, [selectedActiveRequestCount, selectedVisibleRequests]);
+    return Object.fromEntries(
+      RESOLUTION_ACTION_OPTIONS.map(([action]) => {
+        const eligibleCount = selectedVisibleRequests.filter((request) =>
+          request.active && isResolutionActionAllowed(request, offeringById.get(request.offeringId), action),
+        ).length;
+
+        return [
+          action,
+          {
+            selectedCount,
+            eligibleCount,
+            skippedCount: Math.max(selectedCount - eligibleCount, 0),
+            lotteryCount,
+            reviewCount,
+            waitlistCount,
+          },
+        ];
+      }),
+    );
+  }, [offeringById, selectedVisibleRequests]);
 
   return (
     <div className="portal">
@@ -935,6 +1326,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
           <button type="button" className="portal-reset" onClick={handleRefresh} disabled={busyKey === "refresh"}>
             {busyKey === "refresh" ? "Syncing…" : "Refresh"}
           </button>
+          <button
+            type="button"
+            className={dangerExpanded ? "portal-reset portal-reset--danger" : "portal-reset portal-reset--secondary"}
+            onClick={() => setDangerExpanded((current) => !current)}
+            aria-expanded={dangerExpanded}
+            aria-controls="staff-danger-zone"
+          >
+            Reset demo data
+          </button>
           <button type="button" className="portal-reset portal-reset--secondary" onClick={onReturnToPortal}>
             Student Portal
           </button>
@@ -944,30 +1344,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
       <main className="portal-main portal-main--staff">
         <div className="page-header">
           <h2>Staff Administration</h2>
-          <p className="message">Manage shared offerings, resolve requests, and create targeted overrides.</p>
         </div>
 
         {banner ? <Banner tone={banner.tone} title={banner.title} detail={banner.detail} onClose={() => setBanner(null)} /> : null}
 
-        {!loading ? (
-          <section className="page-panel page-panel--danger">
-            <h3>Danger Zone</h3>
-            <div className="danger-zone danger-zone--collapsed">
-              <div className="danger-zone__summary">
-                <p>Reset every student, request, override, audit event, and shared offering back to the seed baseline.</p>
-              </div>
-              <button
-                type="button"
-                className={dangerExpanded ? "mini-button mini-button--danger" : "mini-button"}
-                onClick={() => setDangerExpanded((current) => !current)}
-                aria-expanded={dangerExpanded}
-                aria-controls="staff-danger-zone"
-              >
-                {dangerExpanded ? "Hide danger actions" : "Show danger actions"}
-              </button>
-            </div>
-            {dangerExpanded ? (
-              <div id="staff-danger-zone" className="danger-zone danger-zone--actions">
+        {!loading && dangerExpanded ? (
+          <section id="staff-danger-zone" className="page-panel page-panel--danger">
+            <h3>Reset demo data</h3>
+              <div className="danger-zone danger-zone--actions">
                 <div className="danger-zone__summary">
                   <strong>Reset all records</strong>
                   <p>This should only be used when you need to restore every student and shared offering to the original seed baseline.</p>
@@ -987,7 +1371,6 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   Reset all records
                 </button>
               </div>
-            ) : null}
           </section>
         ) : null}
 
@@ -998,6 +1381,201 @@ export function StaffAdminPage({ onReturnToPortal }) {
         ) : null}
 
         {!loading && activeTab === "offerings" ? (
+          <>
+          <div className="staff-create-grid">
+            <section className="page-panel">
+              <h3>Create new course</h3>
+              <div className="staff-form-grid">
+                <div className="staff-form-row">
+                  <label>Course Code</label>
+                  <input value={courseForm.code} onChange={(event) => updateCourseForm("code", event.target.value)} placeholder="COMP7999" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Title</label>
+                  <input value={courseForm.title} onChange={(event) => updateCourseForm("title", event.target.value)} placeholder="Special Topics in Engineering" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Faculty</label>
+                  <input value={courseForm.faculty} onChange={(event) => updateCourseForm("faculty", event.target.value)} />
+                </div>
+                <div className="staff-form-row">
+                  <label>Department</label>
+                  <input value={courseForm.department} onChange={(event) => updateCourseForm("department", event.target.value)} placeholder="Computer Science" />
+                </div>
+                <div className="staff-form-row">
+                  <label>List Type</label>
+                  <select value={courseForm.listType} onChange={(event) => updateCourseForm("listType", event.target.value)}>
+                    {STAFF_LIST_TYPE_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="staff-form-row">
+                  <label>Credits</label>
+                  <input value={courseForm.credits} onChange={(event) => updateCourseForm("credits", event.target.value)} inputMode="numeric" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Cross-faculty offering</label>
+                  <label className="staff-switch">
+                    <input
+                      type="checkbox"
+                      checked={courseForm.crossFaculty}
+                      onChange={(event) => updateCourseForm("crossFaculty", event.target.checked)}
+                    />
+                    <span className="staff-switch__track" aria-hidden="true" />
+                    <span>{courseForm.crossFaculty ? "On" : "Off"}</span>
+                  </label>
+                </div>
+                <div className="staff-form-row staff-form-row--stacked">
+                  <label>Synopsis</label>
+                  <textarea
+                    className="staff-note-input"
+                    value={courseForm.synopsis}
+                    onChange={(event) => updateCourseForm("synopsis", event.target.value)}
+                    placeholder="Short internal synopsis shown in the student detail dialog."
+                  />
+                </div>
+                <div className="staff-inline-actions">
+                  <button
+                    type="button"
+                    className="mini-button mini-button--primary"
+                    onClick={handleConfirmCreateCourse}
+                    disabled={busyKey === "course:create"}
+                  >
+                    Create Course
+                  </button>
+                </div>
+                {!courseValidation.valid ? <p className="staff-inline-note">{courseValidation.detail}</p> : null}
+              </div>
+            </section>
+
+            <section className="page-panel">
+              <h3>Create new offering</h3>
+              <div className="staff-form-grid">
+                <div className="staff-form-row">
+                  <label>Course</label>
+                  <select
+                    value={offeringCreateForm.courseCode}
+                    onChange={(event) => updateOfferingCreateForm("courseCode", event.target.value)}
+                  >
+                    <option value="">Select course</option>
+                    {courseCodeOptions.map((course) => (
+                      <option key={course.code} value={course.code}>
+                        {course.code} · {course.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="staff-form-row">
+                  <label>Offering ID</label>
+                  <div className="staff-readonly-value">
+                    <strong>{pendingOfferingId || "Waiting for course / subclass / semester"}</strong>
+                    <span>Generated from course code, subclass, and semester.</span>
+                  </div>
+                </div>
+                <div className="staff-form-row">
+                  <label>Semester</label>
+                  <input value={offeringCreateForm.semester} onChange={(event) => updateOfferingCreateForm("semester", event.target.value)} inputMode="numeric" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Subclass</label>
+                  <input value={offeringCreateForm.subclass} onChange={(event) => updateOfferingCreateForm("subclass", event.target.value)} placeholder="A" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Policy</label>
+                  <select value={offeringCreateForm.allocationPolicy} onChange={(event) => updateOfferingCreateForm("allocationPolicy", event.target.value)}>
+                    {STAFF_POLICY_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="staff-form-row">
+                  <label>Capacity</label>
+                  <input value={offeringCreateForm.capacity} onChange={(event) => updateOfferingCreateForm("capacity", event.target.value)} inputMode="numeric" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Request Window</label>
+                  <div className="staff-window-grid">
+                    <label className="staff-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={offeringCreateForm.requestWindowOpen}
+                        onChange={(event) => updateOfferingCreateForm("requestWindowOpen", event.target.checked)}
+                      />
+                      Open
+                    </label>
+                    <StaffDateField
+                      label="Request window close date"
+                      value={offeringCreateForm.requestWindowClosesOn}
+                      onChange={(value) => updateOfferingCreateForm("requestWindowClosesOn", value)}
+                    />
+                  </div>
+                </div>
+                <div className="staff-form-row">
+                  <label>Drop Window</label>
+                  <div className="staff-window-grid">
+                    <label className="staff-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={offeringCreateForm.dropWindowOpen}
+                        onChange={(event) => updateOfferingCreateForm("dropWindowOpen", event.target.checked)}
+                      />
+                      Open
+                    </label>
+                    <StaffDateField
+                      label="Drop window close date"
+                      value={offeringCreateForm.dropWindowClosesOn}
+                      onChange={(value) => updateOfferingCreateForm("dropWindowClosesOn", value)}
+                    />
+                  </div>
+                </div>
+                <div className="staff-form-row">
+                  <label>Teaching Day</label>
+                  <select value={offeringCreateForm.scheduleDay} onChange={(event) => updateOfferingCreateForm("scheduleDay", event.target.value)}>
+                    {STAFF_DAY_OPTIONS.map((day) => (
+                      <option key={day} value={day}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="staff-form-row">
+                  <label>Start / End</label>
+                  <div className="staff-inline-actions">
+                    <input type="time" value={offeringCreateForm.scheduleStart} onChange={(event) => updateOfferingCreateForm("scheduleStart", event.target.value)} />
+                    <input type="time" value={offeringCreateForm.scheduleEnd} onChange={(event) => updateOfferingCreateForm("scheduleEnd", event.target.value)} />
+                  </div>
+                </div>
+                <div className="staff-form-row">
+                  <label>Venue</label>
+                  <input value={offeringCreateForm.venue} onChange={(event) => updateOfferingCreateForm("venue", event.target.value)} placeholder="MWT 1 / Zoom" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Prerequisites</label>
+                  <input value={offeringCreateForm.prerequisites} onChange={(event) => updateOfferingCreateForm("prerequisites", event.target.value)} placeholder="COMP7503, COMP7506" />
+                </div>
+                <div className="staff-form-row">
+                  <label>Corequisites</label>
+                  <input value={offeringCreateForm.corequisites} onChange={(event) => updateOfferingCreateForm("corequisites", event.target.value)} placeholder="STAT7601" />
+                </div>
+                <div className="staff-inline-actions">
+                  <button
+                    type="button"
+                    className="mini-button mini-button--primary"
+                    onClick={handleConfirmCreateOffering}
+                    disabled={!offeringCreateValidation.valid || busyKey === "offering:create"}
+                  >
+                    Create Offering
+                  </button>
+                </div>
+                {!offeringCreateValidation.valid ? <p className="staff-inline-note">{offeringCreateValidation.detail}</p> : null}
+              </div>
+            </section>
+          </div>
           <div className="staff-grid">
             <section className="page-panel">
               <h3>Shared Offerings</h3>
@@ -1020,10 +1598,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     onChange={(event) => setOfferingPolicyFilter(event.target.value)}
                   >
                     <option value="all">All</option>
-                    <option value="firstComeFirstServed">firstComeFirstServed</option>
-                    <option value="lottery">lottery</option>
-                    <option value="priorityReview">priorityReview</option>
-                    <option value="locked">locked</option>
+                    {STAFF_POLICY_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="staff-toolbar__field">
@@ -1066,7 +1645,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </label>
               </div>
               <div className="table-wrap">
-                <table className="portal-table">
+                <table className="portal-table portal-table--staff-offerings">
                   <thead>
                     <tr>
                       <th>Offering</th>
@@ -1115,13 +1694,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
             </section>
 
             <section className="page-panel page-panel--focus">
-              <h3>{selectedOffering ? `Offering Editor · ${selectedOffering.courseCode}` : "Offering Editor"}</h3>
+              <h3>{selectedOffering ? `Editing existing offering · ${selectedOffering.courseCode}` : "Offering Editor"}</h3>
               {selectedOffering ? (
                 <div className="staff-selection-banner" aria-live="polite">
                   <div className="staff-selection-banner__eyebrow">Selected offering</div>
                   <div className="staff-selection-banner__main">
                     <strong>{selectedOffering.courseCode}</strong>
-                    <span>{selectedOffering.id}</span>
+                    <span className="staff-selection-banner__id">{selectedOffering.id}</span>
                   </div>
                   {selectedOffering.title ? <div className="staff-selection-banner__note">{selectedOffering.title}</div> : null}
                 </div>
@@ -1132,7 +1711,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <div className="staff-context-card">
                       <span className="staff-context-card__label">Availability</span>
                       <strong className="staff-context-card__value">
-                        {Math.max(0, selectedOffering.capacity - selectedOffering.seatsTaken)} seat(s) open
+                        {formatSeatCount(Math.max(0, selectedOffering.capacity - selectedOffering.seatsTaken), "open")}
                       </strong>
                       <span className="staff-context-card__meta">
                         {selectedOffering.seatsTaken} taken · {selectedOffering.waitlistCount} waitlist
@@ -1192,17 +1771,17 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   </div>
                   <div className="staff-form-row">
                     <label>Seats Taken</label>
-                    <input
-                      value={offeringForm.seatsTaken}
-                      onChange={(event) => setOfferingForm((current) => ({ ...current, seatsTaken: event.target.value }))}
-                    />
+                    <div className="staff-readonly-value">
+                      <strong>{selectedOffering.seatsTaken}</strong>
+                      <span>Derived from the current occupied seat roster.</span>
+                    </div>
                   </div>
                   <div className="staff-form-row">
                     <label>Waitlist Count</label>
-                    <input
-                      value={offeringForm.waitlistCount}
-                      onChange={(event) => setOfferingForm((current) => ({ ...current, waitlistCount: event.target.value }))}
-                    />
+                    <div className="staff-readonly-value">
+                      <strong>{selectedOffering.waitlistCount}</strong>
+                      <span>Read-only count from the current waiting queue.</span>
+                    </div>
                   </div>
                   <div className="staff-form-row">
                     <label>Allocation Policy</label>
@@ -1210,10 +1789,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       value={offeringForm.allocationPolicy}
                       onChange={(event) => setOfferingForm((current) => ({ ...current, allocationPolicy: event.target.value }))}
                     >
-                      <option value="firstComeFirstServed">firstComeFirstServed</option>
-                      <option value="lottery">lottery</option>
-                      <option value="priorityReview">priorityReview</option>
-                      <option value="locked">locked</option>
+                      {STAFF_POLICY_OPTIONS.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="staff-form-row">
@@ -1229,10 +1809,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         />
                         Open
                       </label>
-                      <input
+                      <StaffDateField
+                        label="Request window close date"
                         value={offeringForm.requestWindowClosesOn}
-                        onChange={(event) =>
-                          setOfferingForm((current) => ({ ...current, requestWindowClosesOn: event.target.value }))
+                        onChange={(value) =>
+                          setOfferingForm((current) => ({ ...current, requestWindowClosesOn: value }))
                         }
                       />
                     </div>
@@ -1250,10 +1831,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         />
                         Open
                       </label>
-                      <input
+                      <StaffDateField
+                        label="Drop window close date"
                         value={offeringForm.dropWindowClosesOn}
-                        onChange={(event) =>
-                          setOfferingForm((current) => ({ ...current, dropWindowClosesOn: event.target.value }))
+                        onChange={(value) =>
+                          setOfferingForm((current) => ({ ...current, dropWindowClosesOn: value }))
                         }
                       />
                     </div>
@@ -1282,12 +1864,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         >
                           <span className="staff-decision-card__label">Available seats</span>
                           <strong>
-                            {offeringImpact.summary.availableSeatsBefore} → {offeringImpact.summary.availableSeatsAfter}
+                            {offeringImpact.summary.availableSeatsBefore === offeringImpact.summary.availableSeatsAfter
+                              ? formatSeatCount(offeringImpact.summary.availableSeatsAfter, "available")
+                              : `${offeringImpact.summary.availableSeatsBefore} → ${formatSeatCount(offeringImpact.summary.availableSeatsAfter, "available")}`}
                           </strong>
                           <p>
                             Seats taken: {offeringImpact.before?.seatsTaken ?? selectedOffering?.seatsTaken ?? "—"} /{" "}
                             {offeringImpact.before?.capacity ?? selectedOffering?.capacity ?? "—"}.
-                            {" "}Available seats delta: {offeringImpact.summary.seatsDelta}
+                            {" "}{offeringImpact.summary.seatsDelta === 0 ? "No availability change." : `Availability delta: ${offeringImpact.summary.seatsDelta}.`}
                           </p>
                           <span className="staff-decision-card__hint">
                             {offeringImpactDetail === "seats" ? "Hide tracked approved students" : "Show tracked approved students"}
@@ -1303,14 +1887,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           <strong>
                             {offeringImpact.summary.requestWindowClosingNow || offeringImpact.summary.dropWindowClosingNow
                               ? "Window closes now"
-                              : "Window remains open"}
+                              : "No immediate closure"}
                           </strong>
                           <p>
                             {offeringImpact.summary.requestWindowClosingNow
                               ? "Request window closes immediately with this update."
                               : offeringImpact.summary.dropWindowClosingNow
                                 ? "Drop window closes immediately with this update."
-                                : "No immediate window closure."}
+                                : "Request and drop windows remain as configured."}
                           </p>
                         </div>
                       </div>
@@ -1401,6 +1985,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
               )}
             </section>
           </div>
+          </>
         ) : null}
 
         {!loading && activeTab === "requests" ? (
@@ -1413,7 +1998,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 <span>{requestSummary.queued} queued</span>
                 <span>{requestSummary.waitlist} waitlist</span>
                 <span>{requestSummary.visible} visible</span>
-                <span>{requestSummary.selected} selected active</span>
+                <span>{requestSummary.selected} selected</span>
               </div>
               <div className="staff-table-controls">
                 <label className="staff-checkbox">
@@ -1439,10 +2024,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <input value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} />
                 </label>
                 <button type="button" className="mini-button" onClick={selectAllVisibleRequests} disabled={!visibleRequests.length}>
-                  Select visible
+                  Select visible rows
                 </button>
                 <button type="button" className="mini-button" onClick={selectActiveVisibleRequests} disabled={!visibleRequests.some((item) => item.active)}>
-                  Select active
+                  Select active requests
                 </button>
                 <button type="button" className="mini-button" onClick={clearSelectedRequests} disabled={!selectedRequestIds.length}>
                   Clear
@@ -1453,11 +2038,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   onClick={() =>
                     setConfirmAction({
                       title: "Approve selected requests?",
-                      detail: buildBatchResolveDetail("approve", requestBatchPreview),
+                      detail: buildBatchResolveDetail("approve", requestBatchPreviews.approve),
                       onConfirm: () => handleBatchResolve("approve"),
                     })
                   }
-                  disabled={!selectedActiveRequestCount}
+                  disabled={!requestBatchPreviews.approve.eligibleCount}
                 >
                   Batch Approve
                 </button>
@@ -1467,11 +2052,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   onClick={() =>
                     setConfirmAction({
                       title: "Waitlist selected requests?",
-                      detail: buildBatchResolveDetail("waitlist", requestBatchPreview),
+                      detail: buildBatchResolveDetail("waitlist", requestBatchPreviews.waitlist),
                       onConfirm: () => handleBatchResolve("waitlist"),
                     })
                   }
-                  disabled={!selectedActiveRequestCount}
+                  disabled={!requestBatchPreviews.waitlist.eligibleCount}
                 >
                   Batch Waitlist
                 </button>
@@ -1481,11 +2066,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   onClick={() =>
                     setConfirmAction({
                       title: "Reject selected requests?",
-                      detail: buildBatchResolveDetail("reject", requestBatchPreview),
+                      detail: buildBatchResolveDetail("reject", requestBatchPreviews.reject),
                       onConfirm: () => handleBatchResolve("reject"),
                     })
                   }
-                  disabled={!selectedActiveRequestCount}
+                  disabled={!requestBatchPreviews.reject.eligibleCount}
                 >
                   Batch Reject
                 </button>
@@ -1494,55 +2079,61 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   className="mini-button"
                   onClick={() =>
                     setConfirmAction({
-                      title: "Manual close selected requests?",
-                      detail: buildBatchResolveDetail("manual-close", requestBatchPreview),
+                      title: "Close selected requests without outcome?",
+                      detail: buildBatchResolveDetail("manual-close", requestBatchPreviews["manual-close"]),
                       onConfirm: () => handleBatchResolve("manual-close"),
                     })
                   }
-                  disabled={!selectedActiveRequestCount}
+                  disabled={!requestBatchPreviews["manual-close"].eligibleCount}
                 >
                   Batch Close
                 </button>
               </div>
-              {requestBatchPreview.selectedCount ? (
+              {selectedRequestCount ? (
                 <div className="staff-impact-grid staff-impact-grid--compact" aria-live="polite">
                   <div className="staff-decision-card staff-decision-card--info">
                     <span className="staff-decision-card__label">Batch selection</span>
-                    <strong>{requestBatchPreview.selectedCount} request(s) selected</strong>
-                    <p>{requestBatchPreview.queuedCount} queued and {requestBatchPreview.waitlistCount} currently on waitlist.</p>
+                    <strong>{selectedRequestCount} request(s) selected</strong>
+                    <p>
+                      {requestBatchPreviews.approve.reviewCount} faculty review, {requestBatchPreviews.approve.lotteryCount} lottery pool,
+                      and {requestBatchPreviews.approve.waitlistCount} waitlist record(s).
+                    </p>
                   </div>
                   <div className="staff-decision-card staff-decision-card--success">
-                    <span className="staff-decision-card__label">Eligible now</span>
-                    <strong>{requestBatchPreview.eligibleCount} active request(s)</strong>
-                    <p>These can be approved, rejected, waitlisted, or manually closed right away.</p>
+                    <span className="staff-decision-card__label">Review eligible</span>
+                    <strong>{requestBatchPreviews.approve.eligibleCount} approval-ready</strong>
+                    <p>Lottery records are excluded from ordinary approval.</p>
                   </div>
-                  <div className={requestBatchPreview.skippedCount ? "staff-decision-card staff-decision-card--warn" : "staff-decision-card staff-decision-card--neutral"}>
-                    <span className="staff-decision-card__label">Skipped</span>
-                    <strong>{requestBatchPreview.skippedCount} request(s)</strong>
+                  <div className={requestBatchPreviews.approve.skippedCount ? "staff-decision-card staff-decision-card--warn" : "staff-decision-card staff-decision-card--neutral"}>
+                    <span className="staff-decision-card__label">Policy skipped</span>
+                    <strong>{requestBatchPreviews.approve.skippedCount} request(s)</strong>
                     <p>
-                      {requestBatchPreview.skippedCount
-                        ? "Inactive requests will be ignored by batch actions."
-                        : "No skipped records in the current selection."}
+                      {requestBatchPreviews.approve.skippedCount
+                        ? "Inactive, lottery, or routine FCFS records are protected from this batch action."
+                        : "Every selected request is eligible for approval."}
                     </p>
                   </div>
                 </div>
               ) : null}
               <div className="table-wrap">
-                <table className="portal-table">
+                <table className="portal-table portal-table--staff-requests">
                   <thead>
                     <tr>
                       <th>Select</th>
                       <th>Request</th>
                       <th>Student</th>
                       <th>Offering</th>
+                      <th>Workflow</th>
                       <th>Status</th>
-                      <th>Active</th>
                       <th>Message</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleRequests.length ? (
-                      visibleRequests.map((request) => (
+                      visibleRequests.map((request) => {
+                        const workflow = getRequestWorkflow(request, offeringById.get(request.offeringId));
+
+                        return (
                         <tr
                           key={request.id}
                           className={getSelectableRowClass(request.id === selectedRequestId)}
@@ -1559,14 +2150,24 @@ export function StaffAdminPage({ onReturnToPortal }) {
                               aria-label={`Select ${request.id}`}
                             />
                           </td>
-                          <td>{request.id}</td>
+                          <td>
+                            <span className="staff-mono-cell" title={request.id}>{formatCompactId(request.id)}</span>
+                          </td>
                           <td>{request.studentId}</td>
                           <td>{request.offeringId}</td>
+                          <td>
+                            <div className={`staff-workflow-pill staff-workflow-pill--${workflow.mode}`}>
+                              <strong>{workflow.label}</strong>
+                              <span>{request.active ? "Active" : "Closed"}</span>
+                            </div>
+                          </td>
                           <td>{formatRequestStatusLabel(request.status)}</td>
-                          <td>{request.active ? "Yes" : "No"}</td>
-                          <td>{request.message ?? "—"}</td>
+                          <td>
+                            <span className="staff-message-cell" title={request.message ?? ""}>{request.message ?? "—"}</span>
+                          </td>
                         </tr>
-                      ))
+                        );
+                      })
                     ) : (
                       <tr>
                         <td colSpan={7}>No requests match the current filter.</td>
@@ -1592,6 +2193,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     </div>
                   </div>
                   <div className="staff-context-grid">
+                    <div className={`staff-context-card staff-context-card--workflow staff-context-card--${selectedRequestWorkflow.mode}`}>
+                      <span className="staff-context-card__label">Policy-aware workflow</span>
+                      <strong className="staff-context-card__value">{selectedRequestWorkflow.label}</strong>
+                      <div className="staff-context-list">
+                        <span>{selectedRequestWorkflow.description}</span>
+                        {selectedRequestWorkflow.warning ? <span>{selectedRequestWorkflow.warning}</span> : null}
+                      </div>
+                    </div>
                     <div className="staff-context-card">
                       <span className="staff-context-card__label">Student context</span>
                       <strong className="staff-context-card__value">
@@ -1604,19 +2213,19 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     </div>
                     <div className="staff-context-card">
                       <span className="staff-context-card__label">Request timing</span>
-                      <strong className="staff-context-card__value">{selectedRequest.submittedAt ?? "Time unavailable"}</strong>
+                      <strong className="staff-context-card__value">{formatStaffDateTime(selectedRequest.submittedAt)}</strong>
                       <div className="staff-context-list">
                         <span>{selectedRequest.active ? "Active request" : "Closed request"}</span>
                         <span>{formatRequestStatusLabel(selectedRequest.status)}</span>
                       </div>
                     </div>
                     <div className="staff-context-card">
-                      <span className="staff-context-card__label">Current message</span>
+                      <span className="staff-context-card__label">Student-facing message</span>
                       <strong className="staff-context-card__value">
-                        {selectedRequest.message ? "Student-facing note present" : "No current note"}
+                        {selectedRequest.message ? "Message shown to student" : "No current message"}
                       </strong>
                       <div className="staff-context-list">
-                        <span>{selectedRequest.message ?? "No student-facing note recorded."}</span>
+                        <span>{selectedRequest.message ?? "No student-facing message recorded."}</span>
                       </div>
                     </div>
                     <div className="staff-context-card">
@@ -1630,29 +2239,23 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     </div>
                   </div>
                   <div className="staff-form-row">
-                    <label>Request ID</label>
-                    <div>{selectedRequest.id}</div>
-                  </div>
-                  <div className="staff-form-row">
-                    <label>Student</label>
-                    <div>{selectedRequest.studentId}</div>
-                  </div>
-                  <div className="staff-form-row">
-                    <label>Offering</label>
-                    <div>{selectedRequest.offeringId}</div>
-                  </div>
-                  <div className="staff-form-row">
-                    <label>Status</label>
-                    <div>{formatRequestStatusLabel(selectedRequest.status)}</div>
-                  </div>
-                  <div className="staff-form-row">
                     <label>Preview action</label>
-                    <select value={requestPreviewAction} onChange={(event) => setRequestPreviewAction(event.target.value)}>
-                      <option value="approve">Approve</option>
-                      <option value="reject">Reject</option>
-                      <option value="waitlist">Waitlist</option>
-                      <option value="manual-close">Manual close</option>
-                    </select>
+                    {allowedRequestActions.length ? (
+                      <select value={requestPreviewAction} onChange={(event) => setRequestPreviewAction(event.target.value)}>
+                        {RESOLUTION_ACTION_OPTIONS
+                          .filter(([value]) => allowedRequestActions.includes(value))
+                          .map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <div className="staff-readonly-value">
+                        <strong>No action available</strong>
+                        <span>{selectedRequestWorkflow.warning || "This request cannot be resolved again."}</span>
+                      </div>
+                    )}
                   </div>
                   <div className="staff-form-row staff-form-row--stacked">
                     <label>Resolution Note</label>
@@ -1695,51 +2298,40 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           <p>Shared offering counts after this resolution.</p>
                         </div>
                         <div className={`staff-decision-card ${requestPreviewImpact.summary.enrollmentCreated ? "staff-decision-card--success" : "staff-decision-card--neutral"}`}>
-                          <span className="staff-decision-card__label">Enrollment</span>
-                          <strong>{requestPreviewImpact.summary.enrollmentCreated ? "Enrollment will be created" : "No new enrollment"}</strong>
+                          <span className="staff-decision-card__label">Enrolment</span>
+                          <strong>{requestPreviewImpact.summary.enrollmentCreated ? "Enrolment will be created" : "No new enrolment"}</strong>
                           <p>{selectedRequest.offeringId}</p>
                         </div>
                       </div>
                     ) : (
-                      <p className="staff-inline-note">Choose a preview action to inspect its impact before resolving the request.</p>
+                      <p className="staff-inline-note">
+                        {allowedRequestActions.length
+                          ? "Choose an allowed action to inspect its impact before resolving the request."
+                          : "This request is not eligible for staff resolution under its current workflow."}
+                      </p>
                     )}
                   </div>
                   <div className="staff-inline-actions">
-                    <button
-                      type="button"
-                      className="mini-button mini-button--primary"
-                      onClick={() => handleConfirmResolveRequest("approve")}
-                      disabled={requestResolutionDisabled}
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      className="mini-button"
-                      onClick={() => handleConfirmResolveRequest("reject")}
-                      disabled={requestResolutionDisabled}
-                    >
-                      Reject
-                    </button>
-                    <button
-                      type="button"
-                      className="mini-button"
-                      onClick={() => handleConfirmResolveRequest("waitlist")}
-                      disabled={requestResolutionDisabled}
-                    >
-                      Waitlist
-                    </button>
-                    <button
-                      type="button"
-                      className="mini-button"
-                      onClick={() => handleConfirmResolveRequest("manual-close")}
-                      disabled={requestResolutionDisabled}
-                    >
-                      Manual Close
-                    </button>
+                    {RESOLUTION_ACTION_OPTIONS
+                      .filter(([value]) => allowedRequestActions.includes(value))
+                      .map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={value === "approve" ? "mini-button mini-button--primary" : "mini-button"}
+                          onClick={() => handleConfirmResolveRequest(value)}
+                          disabled={!selectedRequest?.active}
+                        >
+                          {label}
+                        </button>
+                      ))}
                   </div>
                   {requestResolutionDisabled ? (
-                    <p className="staff-inline-note">Only active requests can be resolved. Change the filters or select an active record.</p>
+                    <p className="staff-inline-note">
+                      {selectedRequest?.active
+                        ? "The selected preview action is not allowed for this workflow."
+                        : "Only active requests can be resolved. Change the filters or select an active record."}
+                    </p>
                   ) : null}
                 </div>
               ) : (
@@ -1752,7 +2344,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
         {!loading && activeTab === "overrides" ? (
           <div className="staff-grid">
             <section className="page-panel">
-              <h3>Create Override</h3>
+              <h3>{overrideForm.studentId.trim() ? `Create override for student ${overrideForm.studentId.trim()}` : "Create Override"}</h3>
               <div className="staff-form-grid">
                 <div className="staff-form-row">
                   <label>Student ID</label>
@@ -1809,10 +2401,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   />
                 </div>
                 <div className="staff-inline-actions">
-                  <button type="button" className="mini-button mini-button--primary" onClick={handleCreateOverride}>
+                  <button
+                    type="button"
+                    className="mini-button mini-button--primary"
+                    onClick={handleCreateOverride}
+                    disabled={!overrideValidation.valid || busyKey === "override:create"}
+                  >
                     Create Override
                   </button>
                 </div>
+                {!overrideValidation.valid ? <p className="staff-inline-note">{overrideValidation.detail}</p> : null}
                 <div className="staff-form-row staff-form-row--stacked">
                   <label>Override Impact Preview</label>
                   {overridePreviewBusy ? (
@@ -1873,7 +2471,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </label>
               </div>
               <div className="table-wrap">
-                <table className="portal-table">
+                <table className="portal-table portal-table--staff-overrides">
                   <thead>
                     <tr>
                       <th>ID</th>
@@ -1896,11 +2494,26 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           tabIndex={0}
                           aria-selected={override.id === selectedOverrideId}
                         >
-                          <td>{override.id}</td>
+                          <td>
+                            <span className="staff-mono-cell" title={override.id}>{formatCompactId(override.id)}</span>
+                          </td>
                           <td>{override.studentId}</td>
                           <td>{override.offeringId}</td>
-                          <td>{override.constraintTypes.join(", ")}</td>
-                          <td>{override.createdBy}</td>
+                          <td>
+                            <div className="staff-chip-list">
+                              {(override.constraintTypes ?? []).map((constraintType) => {
+                                const option = OVERRIDE_OPTIONS.find((item) => item.id === constraintType);
+                                return (
+                                  <span key={constraintType} className="staff-chip">
+                                    {option?.label ?? constraintType}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="staff-mono-cell" title={override.createdBy ?? ""}>{override.createdBy}</span>
+                          </td>
                           <td>{override.active ? "Yes" : "No"}</td>
                           <td>
                             {override.active ? (
@@ -1938,7 +2551,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <div className="staff-selection-banner">
                       <div className="staff-selection-banner__eyebrow">Selected override</div>
                       <div className="staff-selection-banner__main">
-                        <strong>{selectedOverride.id}</strong>
+                        <strong title={selectedOverride.id}>{formatCompactId(selectedOverride.id)}</strong>
                         <span>{selectedOverride.offeringId}</span>
                       </div>
                       <div className="staff-selection-banner__note">
@@ -1949,15 +2562,19 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       <div className="staff-context-card">
                         <span className="staff-context-card__label">Student</span>
                         <strong className="staff-context-card__value">{selectedOverride.studentId}</strong>
+                      </div>
+                      <div className="staff-context-card">
+                        <span className="staff-context-card__label">Offering</span>
+                        <strong className="staff-context-card__value">{selectedOverride.offeringId}</strong>
                         <div className="staff-context-list">
-                          <span>{selectedOverride.offeringId}</span>
+                          <span>Override applies only to this offering.</span>
                         </div>
                       </div>
                       <div className="staff-context-card">
                         <span className="staff-context-card__label">Created by</span>
                         <strong className="staff-context-card__value">{selectedOverride.createdBy ?? "Unknown actor"}</strong>
                         <div className="staff-context-list">
-                          <span>{selectedOverride.createdAt ?? "Time unavailable"}</span>
+                          <span>{formatStaffDateTime(selectedOverride.createdAt)}</span>
                         </div>
                       </div>
                       <div className="staff-context-card">
@@ -2012,28 +2629,28 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   className={auditActionFilter === "request-resolved" ? "mini-button mini-button--active" : "mini-button"}
                   onClick={() => setAuditActionFilter("request-resolved")}
                 >
-                  request-resolved
+                  Request resolved
                 </button>
                 <button
                   type="button"
                   className={auditActionFilter === "offering-updated" ? "mini-button mini-button--active" : "mini-button"}
                   onClick={() => setAuditActionFilter("offering-updated")}
                 >
-                  offering-updated
+                  Offering updated
                 </button>
                 <button
                   type="button"
                   className={auditActionFilter === "override-created" ? "mini-button mini-button--active" : "mini-button"}
                   onClick={() => setAuditActionFilter("override-created")}
                 >
-                  override-created
+                  Override created
                 </button>
                 <button
                   type="button"
                   className={auditActionFilter === "override-deactivated" ? "mini-button mini-button--active" : "mini-button"}
                   onClick={() => setAuditActionFilter("override-deactivated")}
                 >
-                  override-removed
+                  Override removed
                 </button>
                 <button
                   type="button"
@@ -2048,9 +2665,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <span>Actor Type</span>
                   <select value={auditActorFilter} onChange={(event) => setAuditActorFilter(event.target.value)}>
                     <option value="all">All</option>
-                    <option value="student">student</option>
-                    <option value="staff">staff</option>
-                    <option value="system">system</option>
+                    <option value="student">Student</option>
+                    <option value="staff">Staff</option>
+                    <option value="system">System</option>
                   </select>
                 </label>
                 <label className="staff-toolbar__field">
@@ -2059,7 +2676,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <option value="">All</option>
                     {auditActionOptions.map((action) => (
                       <option key={action} value={action}>
-                        {action}
+                        {formatAuditActionLabel(action)}
                       </option>
                     ))}
                   </select>
@@ -2074,7 +2691,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <option value="all">All</option>
                     {auditTargetTypeOptions.map((targetType) => (
                       <option key={targetType} value={targetType}>
-                        {targetType}
+                        {targetType === "constraintOverride" ? "Override" : targetType === "request" ? "Request" : targetType === "offering" ? "Offering" : targetType}
                       </option>
                     ))}
                   </select>
@@ -2096,8 +2713,8 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       <th>Action</th>
                       <th>Target</th>
                       <th>Subject Student</th>
-                      <th>Before</th>
-                      <th>After</th>
+                      <th>Summary</th>
+                      <th>State change</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2111,13 +2728,21 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           tabIndex={0}
                           aria-selected={event.id === selectedAuditId}
                         >
-                          <td>{event.timestamp}</td>
-                          <td>{event.actorType}:{event.actorId}</td>
-                          <td>{event.action}</td>
-                          <td>{event.targetType}:{event.targetId}</td>
+                          <td>{formatStaffDateTime(event.timestamp)}</td>
+                          <td>{formatAuditActorLabel(event)}</td>
+                          <td>{formatAuditActionLabel(event.action)}</td>
+                          <td>{formatAuditTargetLabel(event)}</td>
                           <td>{event.subjectStudentId ?? "—"}</td>
-                          <td>{compactJson(event.before)}</td>
-                          <td>{compactJson(event.after)}</td>
+                          <td>
+                            <div className="staff-audit-cell">
+                              <strong>{buildAuditEventSummary(event)}</strong>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="staff-audit-cell staff-audit-cell--muted">
+                              <span>{buildAuditEventChange(event)}</span>
+                            </div>
+                          </td>
                         </tr>
                       ))
                     ) : (
@@ -2136,44 +2761,72 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <div className="staff-selection-banner">
                     <div className="staff-selection-banner__eyebrow">Selected audit event</div>
                     <div className="staff-selection-banner__main">
-                      <strong>{selectedAuditEvent.action}</strong>
-                      <span>{selectedAuditEvent.targetType}:{selectedAuditEvent.targetId}</span>
+                      <strong>{formatAuditActionLabel(selectedAuditEvent.action)}</strong>
+                      <span>{formatAuditTargetLabel(selectedAuditEvent)}</span>
                     </div>
-                    <div className="staff-selection-banner__note">
-                      {selectedAuditEvent.timestamp ?? "Timestamp unavailable"}
-                    </div>
+                    <div className="staff-selection-banner__note">{buildAuditEventSummary(selectedAuditEvent)}</div>
                   </div>
                   <div className="staff-form-row">
                     <label>Event ID</label>
-                    <div>{selectedAuditEvent.id}</div>
+                    <div>
+                      <span className="staff-mono-cell" title={selectedAuditEvent.id}>{formatCompactId(selectedAuditEvent.id)}</span>
+                    </div>
                   </div>
                   <div className="staff-form-row">
                     <label>Timestamp</label>
-                    <div>{selectedAuditEvent.timestamp ?? "—"}</div>
+                    <div>{formatStaffDateTime(selectedAuditEvent.timestamp)}</div>
                   </div>
                   <div className="staff-form-row">
                     <label>Actor</label>
-                    <div>{selectedAuditEvent.actorType}:{selectedAuditEvent.actorId}</div>
+                    <div>{formatAuditActorLabel(selectedAuditEvent)}</div>
                   </div>
                   <div className="staff-form-row">
                     <label>Action</label>
-                    <div>{selectedAuditEvent.action}</div>
+                    <div>{formatAuditActionLabel(selectedAuditEvent.action)}</div>
                   </div>
                   <div className="staff-form-row">
                     <label>Target</label>
-                    <div>{selectedAuditEvent.targetType}:{selectedAuditEvent.targetId}</div>
+                    <div>{formatAuditTargetLabel(selectedAuditEvent)}</div>
                   </div>
                   <div className="staff-form-row">
                     <label>Student</label>
                     <div>{selectedAuditEvent.subjectStudentId ?? "—"}</div>
                   </div>
                   <div className="staff-form-row staff-form-row--stacked">
+                    <label>State change</label>
+                    <div className="staff-audit-summary-card">
+                      <strong>{buildAuditEventChange(selectedAuditEvent)}</strong>
+                    </div>
+                  </div>
+                  <div className="staff-form-row staff-form-row--stacked">
                     <label>Before</label>
-                    <pre className="staff-json-block">{JSON.stringify(selectedAuditEvent.before, null, 2) || "—"}</pre>
+                    {selectedAuditBeforeRows.length ? (
+                      <div className="staff-audit-detail-list">
+                        {selectedAuditBeforeRows.map((row) => (
+                          <div className="staff-audit-detail-list__row" key={`before-${row.label}`}>
+                            <span>{row.label}</span>
+                            <strong>{row.value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="staff-audit-empty">No previous value was recorded for this event.</div>
+                    )}
                   </div>
                   <div className="staff-form-row staff-form-row--stacked">
                     <label>After</label>
-                    <pre className="staff-json-block">{JSON.stringify(selectedAuditEvent.after, null, 2) || "—"}</pre>
+                    {selectedAuditAfterRows.length ? (
+                      <div className="staff-audit-detail-list">
+                        {selectedAuditAfterRows.map((row) => (
+                          <div className="staff-audit-detail-list__row" key={`after-${row.label}`}>
+                            <span>{row.label}</span>
+                            <strong>{row.value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="staff-audit-empty">No updated value was recorded for this event.</div>
+                    )}
                   </div>
                 </div>
               ) : (

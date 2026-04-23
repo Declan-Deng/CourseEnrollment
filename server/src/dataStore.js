@@ -1,6 +1,13 @@
 import { createSeedDomainSnapshot } from "./domainSeed.js";
 import { previewEnrollmentDecision } from "./enrollmentDecisionService.js";
-import { listAdminOfferings, previewOfferingUpdate, updateOfferingForAdmin } from "./adminOfferingsService.js";
+import {
+  createCourseForAdmin,
+  createOfferingForAdmin,
+  listAdminCourses,
+  listAdminOfferings,
+  previewOfferingUpdate,
+  updateOfferingForAdmin,
+} from "./adminOfferingsService.js";
 import {
   createConstraintOverride,
   deactivateConstraintOverride,
@@ -348,6 +355,52 @@ export async function listAdminOfferingView(options = {}) {
   const activeRepository = await getRepository();
   const aggregateState = await buildAdminAggregateState(activeRepository);
   return listAdminOfferings(aggregateState);
+}
+
+export async function listAdminCourseView(options = {}) {
+  const activeRepository = await getRepository();
+  const aggregateState = await buildAdminAggregateState(activeRepository);
+  return listAdminCourses(aggregateState);
+}
+
+export async function createAdminCourse(payload, options = {}) {
+  return withWriteLock(async () => {
+    const activeRepository = await getRepository();
+    const aggregateState = await buildAdminAggregateState(activeRepository);
+    const actor = resolveActor(options, { type: "staff", id: "staff-office-001" });
+    const { course, department, auditEvent } = createCourseForAdmin(aggregateState, payload, actor);
+
+    await activeRepository.courseRepository.create(course);
+    await activeRepository.departmentRepository.upsert(department);
+    await activeRepository.auditRepository.append([auditEvent]);
+
+    return {
+      ok: true,
+      headline: "Course created.",
+      course,
+    };
+  });
+}
+
+export async function createAdminOffering(payload, options = {}) {
+  return withWriteLock(async () => {
+    const activeRepository = await getRepository();
+    const aggregateState = await buildAdminAggregateState(activeRepository);
+    const actor = resolveActor(options, { type: "staff", id: "staff-office-001" });
+    const { offering, auditEvent } = createOfferingForAdmin(aggregateState, payload, actor);
+
+    await activeRepository.offeringRepository.create(offering);
+    await activeRepository.auditRepository.append([auditEvent]);
+
+    const nextState = await buildAdminAggregateState(activeRepository);
+    const createdOffering = listAdminOfferings(nextState).find((item) => item.id === offering.id) ?? offering;
+
+    return {
+      ok: true,
+      headline: "Offering created.",
+      offering: createdOffering,
+    };
+  });
 }
 
 export async function updateAdminOffering(offeringId, patch, options = {}) {

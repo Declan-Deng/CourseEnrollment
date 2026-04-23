@@ -2,14 +2,15 @@ import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMem
 import { AcademicSummaryStrip, WindowStatusStrip } from "../components/PortalShared";
 import {
   applyGroupViewControls,
-  countCourseGroups,
   createDefaultGroupViewControls,
   createGroupedCourses,
+  formatOfferingCount,
   formatSchedule,
   getCourseGroup,
   getCourseGroups,
   getCourseRowClass,
   getListTypeClass,
+  getListTypeLabel,
   getPolicyCompactMeta,
   getPrimaryAction,
   getRuleSummary,
@@ -41,7 +42,7 @@ const GROUP_CAPACITY_FILTER_OPTIONS = [
 ];
 
 const GROUP_RULE_FILTER_OPTIONS = [
-  { value: "all", label: "All rule previews" },
+  { value: "all", label: "All guidance" },
   { value: "can-request", label: "Can request" },
   { value: "in-progress", label: "Request in progress" },
   { value: "enrolled", label: "Already enrolled" },
@@ -166,7 +167,7 @@ function AnimatedGroupBody({ expanded, children, collapsedNote, animation = "hei
         </div>
       ) : null}
 
-      {!expanded && !renderBody ? (
+      {!expanded && !renderBody && collapsedNote ? (
         <div className="course-group__note">
           <div className="course-group__note-inner">{collapsedNote}</div>
         </div>
@@ -204,17 +205,6 @@ function InlineCourseLink({ text, linkedCourseCode, onJump }) {
   );
 }
 
-const CourseStatusStrip = memo(function CourseStatusStrip({ counts }) {
-  return (
-    <div className="course-status-strip" aria-label="Current course status summary">
-      <span className="course-status-chip course-status-chip--enrolled">{counts.enrolled} enrolled</span>
-      <span className="course-status-chip course-status-chip--requestable">{counts.requestable} requestable</span>
-      <span className="course-status-chip course-status-chip--active">{counts.active} active requests</span>
-      <span className="course-status-chip course-status-chip--blocked">{counts.blocked} blocked/closed</span>
-    </div>
-  );
-});
-
 const FilterSummaryBar = memo(function FilterSummaryBar({ chips, onClearAll }) {
   if (chips.length === 0) {
     return null;
@@ -238,7 +228,7 @@ const FilterSummaryBar = memo(function FilterSummaryBar({ chips, onClearAll }) {
 });
 
 const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse, embedded = false }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(Boolean(selectedCourse));
   const selectedSummary = useMemo(
     () => (selectedCourse ? getRuleSummary(selectedCourse) : null),
     [selectedCourse],
@@ -284,6 +274,12 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
       ),
     [entries],
   );
+  useEffect(() => {
+    if (selectedCourse) {
+      setExpanded(true);
+    }
+  }, [selectedCourse]);
+
   const collapsedNote = selectedCourse ? (
     <div className="course-group__compact-note">
       <strong>Watching {selectedCourse.code}</strong>
@@ -295,8 +291,8 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
     </div>
   ) : (
     <div className="course-group__compact-note">
-      <strong>No course selected</strong>
-      <span>Select a course below, then open this weekly grid to compare it with your current plan.</span>
+      <strong>Timetable comparison is idle</strong>
+      <span>Select a course below only when you want to compare it against your current class pattern.</span>
     </div>
   );
 
@@ -353,11 +349,11 @@ const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLo
     return (
       <div className="inspection-card inspection-card--summary">
         <div className="selected-course-summary selected-course-summary--empty">
-          <span className="selected-course-summary__eyebrow">Inspection focus</span>
+          <span className="selected-course-summary__eyebrow">Inspection panel</span>
           <strong className="selected-course-summary__empty-title">No course selected</strong>
           <div className="selected-course-summary__line">
             <strong>Tip:</strong>
-            <span>Select a course title below to inspect its rule outcome and compare it against your current timetable.</span>
+            <span>Select a course title below when you want more detail or a timetable comparison.</span>
           </div>
         </div>
       </div>
@@ -370,7 +366,7 @@ const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLo
   return (
     <div className="inspection-card inspection-card--summary">
       <div className="selected-course-summary">
-        <span className="selected-course-summary__eyebrow">Inspection focus</span>
+        <span className="selected-course-summary__eyebrow">Inspection panel</span>
         <div className="selected-course-summary__header">
           <div className="selected-course-summary__identity">
             <strong>{course.code}</strong>
@@ -385,7 +381,9 @@ const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLo
         </div>
         <div className="selected-course-summary__chips">
           <span className={`preview-pill preview-pill--${summary.variant}`}>{summary.conclusion}</span>
-          <span className={getListTypeClass(course.listType)}>{course.listType}</span>
+          <span className={getListTypeClass(course.listType)} title={getListTypeLabel(course.listType)}>
+            {course.listType}
+          </span>
           <span className={getSubclassClass(course.subclass)}>Subclass {course.subclass}</span>
           <span className={`soft-tag soft-tag--policy-compact soft-tag--policy-compact-${policyMeta.variant}`}>
             {policyMeta.label}
@@ -417,13 +415,33 @@ const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLo
 });
 
 const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable, onLocateCourse }) {
+  const [expanded, setExpanded] = useState(Boolean(selectedCourse));
+
+  useEffect(() => {
+    if (selectedCourse) {
+      setExpanded(true);
+    }
+  }, [selectedCourse]);
+
+  const compactNote = selectedCourse
+    ? `${selectedCourse.code} selected for closer review.`
+    : "Open only when you want course detail or a timetable comparison.";
+
   return (
-    <section className="page-panel page-panel--inspection">
-      <h3>Inspection tray</h3>
-      <div className="inspection-tray">
-        <SelectedCourseSummary course={selectedCourse} onLocateCourse={onLocateCourse} />
-        <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} embedded />
-      </div>
+    <section className={`page-panel page-panel--inspection${expanded ? "" : " page-panel--inspection-collapsed"}`}>
+      <button type="button" className="course-group__header" onClick={() => setExpanded((currentValue) => !currentValue)}>
+        <span className="course-group__title-block">
+          <span className="course-group__title">Inspection panel</span>
+          <span className="course-group__description">{compactNote}</span>
+        </span>
+        <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
+      </button>
+      <AnimatedGroupBody expanded={expanded} animation="fade" collapsedNote={null}>
+        <div className="inspection-tray">
+          <SelectedCourseSummary course={selectedCourse} onLocateCourse={onLocateCourse} />
+          <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} embedded />
+        </div>
+      </AnimatedGroupBody>
     </section>
   );
 });
@@ -446,7 +464,7 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
           }}
           aria-expanded={expanded}
         >
-          {expanded ? "Hide details" : "Why / Next"}
+          {expanded ? "Hide guidance" : "View guidance"}
         </button>
       ) : null}
       {expanded && summary.reasonText ? (
@@ -748,7 +766,9 @@ const CourseTableRow = memo(function CourseTableRow({
           <strong>{course.faculty}</strong>
           <span>{course.department}</span>
           <div className="tag-row">
-            <span className={getListTypeClass(course.listType)}>{course.listType}</span>
+            <span className={getListTypeClass(course.listType)} title={getListTypeLabel(course.listType)}>
+              {course.listType}
+            </span>
             <span className={getSubclassClass(course.subclass)}>Subclass {course.subclass}</span>
             {course.crossFaculty ? <span className="soft-tag soft-tag--accent">Cross-faculty</span> : null}
           </div>
@@ -817,7 +837,11 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
         <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
       </button>
 
-      <AnimatedGroupBody expanded={expanded} animation={groupAnimation} collapsedNote={`${courses.length} offering(s) visible in this group.`}>
+      <AnimatedGroupBody
+        expanded={expanded}
+        animation={groupAnimation}
+        collapsedNote={`${formatOfferingCount(courses.length)} visible in this group.`}
+      >
         {courses.length === 0 ? (
           <div className="course-group__empty">
             {totalCourses === 0 ? "No course is currently in this group." : "No course in this group matches the current sort / filter menu."}
@@ -889,7 +913,7 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
                   </th>
                   <th scope="col">
                     <ColumnHeaderControl
-                      label="Rule Preview"
+                      label="Eligibility / Next"
                       columnId="rule"
                       controls={controls}
                       options={options}
@@ -1062,7 +1086,6 @@ export function AddCoursePage({
     [courses, normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled],
   );
 
-  const overallCountSummary = useMemo(() => countCourseGroups(courses), [courses]);
   const courseOrderMap = useMemo(() => new Map(courses.map((course, index) => [course.id, index])), [courses]);
   const filteredGroups = useMemo(() => createGroupedCourses(filteredCourses), [filteredCourses]);
   const [requestableShelfIds, setRequestableShelfIds] = useState([]);
@@ -1262,7 +1285,6 @@ export function AddCoursePage({
         summary={summary}
         systemMeta={systemMeta}
         title="Academic Summary"
-        showUrgentActions
         onRefresh={onRefresh}
       />
       <WindowStatusStrip summary={summary} semester={semester} title="Current window and support" tone="info" />
@@ -1318,7 +1340,7 @@ export function AddCoursePage({
           <div className="toolbar-section toolbar-section--actions" aria-label="Course control actions">
             <div className="toolbar-section__heading">
               <span className="toolbar-section__eyebrow">Views</span>
-              <strong>Change what is visible</strong>
+              <strong>Display options</strong>
             </div>
             <div className="toolbar-action-cluster">
               <button
@@ -1344,7 +1366,7 @@ export function AddCoursePage({
                   setOnlyOpen(false);
                 }}
               >
-                Show enrolled
+                Enrolled only
               </button>
               <button
                 type="button"
@@ -1353,9 +1375,12 @@ export function AddCoursePage({
                 aria-expanded={toolsExpanded}
                 aria-controls="course-center-advanced-filters"
               >
-                {`Advanced${advancedFilterCount ? ` (${advancedFilterCount})` : ""}`}
+                {`Advanced filters${advancedFilterCount ? ` (${advancedFilterCount})` : ""}`}
               </button>
             </div>
+            <p className="toolbar-section__hint">
+              These controls filter which courses stay visible. Section headers below only expand or collapse each group.
+            </p>
           </div>
         </div>
         {toolsExpanded ? (
@@ -1385,10 +1410,7 @@ export function AddCoursePage({
       />
 
       <section className="page-panel">
-        <h3>Enrolment Form (Manage Courses) - {totalVisibleCourses} offering(s)</h3>
-        <CourseStatusStrip
-          counts={overallCountSummary}
-        />
+        <h3>{`Course list — ${formatOfferingCount(totalVisibleCourses)}`}</h3>
 
         {totalVisibleCourses === 0 ? (
           <div className="course-group__empty">No courses match the current filters.</div>
