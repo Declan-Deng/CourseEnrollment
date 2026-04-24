@@ -79,6 +79,21 @@ const STAFF_MONTH_OPTIONS = [
 
 const STAFF_DATE_YEARS = ["2025", "2026", "2027"];
 
+const RESOLUTION_PAST_TENSE = {
+  approve: "approved",
+  waitlist: "waitlisted",
+  reject: "rejected",
+  "manual-close": "closed without outcome",
+};
+
+function formatRequestCount(count) {
+  return count === 1 ? "1 request" : `${count} requests`;
+}
+
+function formatResolutionPastTense(action) {
+  return RESOLUTION_PAST_TENSE[action] ?? formatResolutionActionLabel(action).toLowerCase();
+}
+
 function readIsoDateParts(value) {
   const [year = "2026", month = "01", day = "31"] = String(value || "2026-01-31").split("-");
   return {
@@ -1095,7 +1110,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
           },
           actorId,
         ),
-      `Request ${selectedRequest.id} resolved as ${formatResolutionActionLabel(action).toLowerCase()}.`,
+      `Request ${selectedRequest.id} ${formatResolutionPastTense(action)}.`,
     );
   }
 
@@ -1157,7 +1172,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
         const firstFailure = failed[0];
         showBanner(
           "warn",
-          `${succeeded.length} request(s) resolved as ${formatResolutionActionLabel(action).toLowerCase()}; ${failed.length} failed.`,
+          `${formatRequestCount(succeeded.length)} ${formatResolutionPastTense(action)}; ${formatRequestCount(failed.length)} failed.`,
           `${firstFailure.id}: ${toFriendlyError(firstFailure.error)}`,
         );
         return;
@@ -1171,7 +1186,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
       showBanner(
         "success",
-        `${succeeded.length} request(s) resolved as ${formatResolutionActionLabel(action).toLowerCase()}.`,
+        `${formatRequestCount(succeeded.length)} ${formatResolutionPastTense(action)}.`,
         "The shared state has been refreshed.",
       );
     } catch (error) {
@@ -2093,10 +2108,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 <div className="staff-impact-grid staff-impact-grid--compact" aria-live="polite">
                   <div className="staff-decision-card staff-decision-card--info">
                     <span className="staff-decision-card__label">Batch selection</span>
-                    <strong>{selectedRequestCount} request(s) selected</strong>
+                    <strong>{formatRequestCount(selectedRequestCount)} selected</strong>
                     <p>
                       {requestBatchPreviews.approve.reviewCount} faculty review, {requestBatchPreviews.approve.lotteryCount} lottery pool,
-                      and {requestBatchPreviews.approve.waitlistCount} waitlist record(s).
+                      and {formatRequestCount(requestBatchPreviews.approve.waitlistCount)} in waitlist handling.
                     </p>
                   </div>
                   <div className="staff-decision-card staff-decision-card--success">
@@ -2106,7 +2121,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   </div>
                   <div className={requestBatchPreviews.approve.skippedCount ? "staff-decision-card staff-decision-card--warn" : "staff-decision-card staff-decision-card--neutral"}>
                     <span className="staff-decision-card__label">Policy skipped</span>
-                    <strong>{requestBatchPreviews.approve.skippedCount} request(s)</strong>
+                    <strong>{formatRequestCount(requestBatchPreviews.approve.skippedCount)}</strong>
                     <p>
                       {requestBatchPreviews.approve.skippedCount
                         ? "Inactive, lottery, or routine FCFS records are protected from this batch action."

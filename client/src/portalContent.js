@@ -8,10 +8,10 @@ const announcementFallbackContent = {
   addDropSchedule: [
     ["19 Jan 2026", "Second semester begins (first day of teaching)."],
     ["19–31 Jan 2026", "Students can add or drop courses online."],
-    ["After 31 Jan 2026", "The online add/drop function closes. Further changes require faculty handling."],
+    ["After 31 Jan 2026", "The online Add / Drop function closes. Further changes require faculty handling."],
     [
       "20–25 Feb 2026",
-      "Students should check their course selection records online. Any discrepancy should be reported to the Department / Faculty Office no later than 25 Feb 2026. This is not an extended add/drop period.",
+      "Students should check their course selection records online. Any discrepancy should be reported to the Department / Faculty Office no later than 25 Feb 2026. This is not an extended Add / Drop period.",
     ],
     [
       "From 26 Feb 2026",
@@ -72,10 +72,10 @@ const announcementFallbackContent = {
       ],
     },
     {
-      title: "1.4 Course Add/Drop",
+      title: "1.4 Course Add / Drop",
       body: [
-        "Students can add and drop courses during the designated add/drop period for each semester.",
-        "After the add/drop period, requests to add or drop from courses are generally not permitted, except under extenuating circumstances. Students must submit a detailed justification to the Department. The application requires support from the Department Head / Programme Director and endorsement by the Associate Dean (Masters).",
+        "Students can add and drop courses during the designated Add / Drop period for each semester.",
+        "After the Add / Drop period, requests to add or drop from courses are generally not permitted, except under extenuating circumstances. Students must submit a detailed justification to the Department. The application requires support from the Department Head / Programme Director and endorsement by the Associate Dean (Masters).",
       ],
       emphasis:
         "All requests must be submitted before the end of the reading / field trip week (or no later than halfway through the teaching activities in the semester). Submissions received after this deadline will NOT be considered.",

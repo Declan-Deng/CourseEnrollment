@@ -799,135 +799,12 @@
 }
 
 .inspection-tray {
-  display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
-  gap: 0.55rem;
+  display: block;
   padding: 0.5rem 0.6rem 0.62rem;
 }
 
 .page-panel--inspection-collapsed {
   background: #e4e5f3;
-}
-
-.inspection-card {
-  min-width: 0;
-  border: 1px solid rgba(151, 157, 196, 0.34);
-  border-radius: 7px;
-  background: rgba(255, 255, 255, 0.38);
-}
-
-.inspection-card--summary {
-  padding: 0.48rem 0.58rem 0.56rem;
-}
-
-.inspection-card--timetable {
-  align-self: start;
-}
-
-.selected-course-summary {
-  display: grid;
-  gap: 0.28rem;
-}
-
-.selected-course-summary--empty {
-  min-height: 100%;
-  align-content: start;
-}
-
-.selected-course-summary__eyebrow {
-  color: #6d7d97;
-  font-size: 0.62rem;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.selected-course-summary__empty-title {
-  color: var(--subheading);
-  font-size: 0.95rem;
-  line-height: 1.2;
-}
-
-.selected-course-summary__header,
-.selected-course-summary__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.55rem;
-  align-items: center;
-}
-
-.selected-course-summary__header {
-  justify-content: space-between;
-  align-items: start;
-}
-
-.selected-course-summary__identity {
-  display: grid;
-  gap: 0.06rem;
-}
-
-.selected-course-summary__identity strong {
-  color: var(--subheading);
-  font-size: 1rem;
-  line-height: 1.1;
-}
-
-.selected-course-summary__identity span {
-  color: #65748d;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.selected-course-summary__schedule {
-  color: var(--muted);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.selected-course-summary__title {
-  margin: 0;
-  color: var(--text-dark);
-  font-size: 0.92rem;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.selected-course-summary__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.2rem 0.55rem;
-  color: var(--muted);
-  font-size: 0.76rem;
-}
-
-.selected-course-summary__meta span + span::before {
-  content: "•";
-  margin-right: 0.55rem;
-  color: rgba(101, 116, 141, 0.7);
-}
-
-.selected-course-summary__line {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0.34rem;
-  align-items: start;
-  font-size: 0.78rem;
-  padding-top: 0.08rem;
-  border-top: 1px solid rgba(151, 157, 196, 0.18);
-}
-
-.selected-course-summary--empty .selected-course-summary__line {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.selected-course-summary__line strong {
-  color: var(--subheading);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .course-group {
@@ -938,10 +815,6 @@
 }
 
 .course-group--timetable {
-  background: rgba(232, 235, 248, 0.54);
-}
-
-.inspection-card--timetable.course-group--timetable {
   background: rgba(232, 235, 248, 0.54);
 }
 
@@ -1229,22 +1102,48 @@
   gap: 0.28rem;
 }
 
-.rule-preview__toggle {
+.capacity-demand {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.capacity-demand__row {
+  display: block;
+}
+
+.capacity-demand__row span {
+  color: #6b778b;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.capacity-demand__row strong {
+  display: block;
+  color: var(--text-dark);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.rule-preview__link {
   width: fit-content;
-  border: 1px solid rgba(145, 151, 188, 0.42);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--subheading);
-  padding: 0.14rem 0.42rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #3f6287;
+  padding: 0;
   font-size: 0.73rem;
   font-weight: 700;
   white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 0.12rem;
 }
 
-.rule-preview__toggle:hover,
-.rule-preview__toggle:focus-visible {
-  background: rgba(247, 249, 255, 0.92);
-  border-color: rgba(119, 130, 171, 0.58);
+.rule-preview__link:hover,
+.rule-preview__link:focus-visible {
+  color: #254568;
 }
 
 .column-control {
@@ -1449,7 +1348,13 @@
 .withdraw-card-stack {
   display: grid;
   gap: 0.55rem;
-  padding: 0.55rem 0.75rem 0.55rem;
+  padding: 0.35rem 0.75rem 0.5rem;
+}
+
+.withdraw-list-summary {
+  padding: 0.42rem 0.75rem 0;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .withdraw-card {
@@ -1491,7 +1396,9 @@
 }
 
 .withdraw-card-note {
-  padding: 0 0.75rem 0.72rem;
+  margin: 0 0.75rem 0.72rem;
+  padding: 0.42rem 0.55rem;
+  border-top: 1px solid rgba(153, 156, 187, 0.28);
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.35;
@@ -1688,12 +1595,28 @@
   font-size: 0.77rem;
   font-weight: 700;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.34rem;
 }
 
 .toolbar-toggle--active {
-  background: #f4efba;
-  border-color: rgba(177, 157, 88, 0.62);
-  color: #624d16;
+  background: #375f35;
+  border-color: #274923;
+  color: #fffbea;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 2px rgba(55, 95, 53, 0.14);
+}
+
+.toolbar-toggle__state {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  padding: 0.04rem 0.34rem;
+  font-size: 0.64rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .toolbar-advanced-note {
@@ -1863,6 +1786,22 @@
 
 .focus-note strong {
   color: var(--subheading);
+}
+
+.timetable-panel {
+  min-width: 0;
+  border: 1px solid rgba(151, 157, 196, 0.34);
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.timetable-panel__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.7rem;
+  align-items: center;
+  padding: 0.42rem 0.62rem;
+  border-bottom: 1px solid rgba(151, 157, 196, 0.24);
+  background: rgba(236, 238, 246, 0.58);
 }
 
 .timetable-board {

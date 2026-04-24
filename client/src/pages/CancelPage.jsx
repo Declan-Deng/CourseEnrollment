@@ -69,9 +69,10 @@ export function CancelPage({
   onRefresh,
 }) {
   const requestDeadline = summary?.windowSummary?.requestClose ?? semester?.keyDates?.requestClose ?? "the request deadline";
+  const requestCountLabel = records.length === 1 ? "1 request remains withdrawable." : `${records.length} requests remain withdrawable.`;
 
   return (
-    <div className="page-stack">
+    <div className="page-stack page-stack--withdraw">
       <AcademicSummaryStrip
         student={student}
         semester={semester}
@@ -97,8 +98,9 @@ export function CancelPage({
         </div>
       </section>
 
-      <section className="page-panel page-panel--results-pending">
+      <section className="page-panel page-panel--results-pending page-panel--withdraw-list">
         <h3>Requests you can still withdraw</h3>
+        {records.length > 0 ? <p className="withdraw-list-summary">{requestCountLabel}</p> : null}
         <div className="withdraw-card-stack">
           {records.length === 0 ? (
             <div className="course-group__empty">
@@ -119,8 +121,7 @@ export function CancelPage({
         </div>
         {records.length > 0 ? (
           <div className="withdraw-card-note">
-            Withdrawing a request removes it from the active queue immediately. Approved courses must still be dropped
-            from Current Enrolment instead.
+            End of withdrawable requests. Other request history remains in View Enrolment Results.
           </div>
         ) : null}
       </section>

@@ -206,7 +206,7 @@ function StudentPortalApp() {
   const showPageHeader = activePage !== "online";
 
   return (
-    <div className="portal">
+    <div className="portal portal--student">
       <header className="portal-header">
         <div className="portal-brand">
           <img src="/hkulogo.jpg" alt="The University of Hong Kong crest" className="portal-crest-image" />

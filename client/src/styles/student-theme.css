@@ -1,0 +1,367 @@
+.portal--student {
+  --student-ink: #26334d;
+  --student-line: #aaaf86;
+  --student-paper: #f3f1d3;
+  --student-paper-strong: #ebe9c3;
+  --student-blue: #c9d2e6;
+  --student-green: #d8e4ca;
+  --student-gold: #efe5ae;
+  --student-slate: #e7e8eb;
+  background:
+    linear-gradient(90deg, rgba(112, 146, 58, 0.12) 0, rgba(112, 146, 58, 0) 9rem),
+    var(--page-bg);
+}
+
+.portal--student .portal-main {
+  background:
+    linear-gradient(90deg, rgba(130, 167, 73, 0.1) 0, rgba(130, 167, 73, 0) 10rem),
+    linear-gradient(180deg, #ecebcf 0, #e4e5c8 100%);
+}
+
+.portal--student .page-stack {
+  gap: 0.46rem;
+}
+
+.portal--student .page-panel {
+  border-color: var(--student-line);
+  border-radius: 2px;
+  background: var(--student-paper);
+  box-shadow: none;
+}
+
+.portal--student .page-panel h3 {
+  background: #b9c0da;
+  border-bottom-color: #a3a9c9;
+  box-shadow: inset 4px 0 0 rgba(47, 57, 84, 0.42);
+}
+
+.portal--student .page-panel--summary-strip {
+  border-color: #99ad75;
+  border-left: 5px solid #608f2f;
+  background: #f7f4dc;
+}
+
+.portal--student .summary-strip {
+  grid-template-columns: minmax(190px, 260px) minmax(0, 1fr);
+  gap: 0.35rem 0.65rem;
+  align-items: stretch;
+  padding: 0.48rem 0.68rem;
+}
+
+.portal--student .summary-strip__header {
+  display: grid;
+  align-content: center;
+  gap: 0.32rem;
+  padding-right: 0.65rem;
+  border-right: 1px solid rgba(116, 135, 80, 0.28);
+}
+
+.portal--student .summary-strip__header-copy {
+  gap: 0.04rem;
+}
+
+.portal--student .summary-strip__header strong {
+  font-size: 0.96rem;
+}
+
+.portal--student .summary-strip__header-meta {
+  justify-content: flex-start;
+}
+
+.portal--student .summary-strip__metrics {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid rgba(153, 168, 115, 0.32);
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.portal--student .summary-strip__metric {
+  border: 0;
+  border-radius: 0;
+  border-left: 1px solid rgba(153, 168, 115, 0.28);
+  background: transparent;
+  padding: 0.35rem 0.48rem 0.4rem;
+}
+
+.portal--student .summary-strip__metric:first-child {
+  border-left: 0;
+}
+
+.portal--student .summary-strip__metric--accent {
+  background: rgba(239, 229, 174, 0.48);
+}
+
+.portal--student .summary-strip__refresh,
+.portal--student .quick-link--primary,
+.portal--student .rule-preview__toggle,
+.portal--student .toolbar-summary__chip {
+  border-radius: 3px;
+}
+
+.portal--student .notice-panel--window {
+  border-radius: 0;
+  border-left: 5px solid #466c8f;
+  background: #dce4d1;
+  padding: 0.34rem 0.56rem;
+}
+
+.portal--student .window-status-strip {
+  grid-template-columns: minmax(210px, 285px) minmax(0, 1fr);
+  gap: 0.58rem;
+}
+
+.portal--student .window-status-grid {
+  gap: 0;
+  border: 1px solid rgba(117, 135, 159, 0.35);
+}
+
+.portal--student .window-status-item {
+  min-height: 3.45rem;
+  border: 0;
+  border-radius: 0;
+  border-left: 1px solid rgba(117, 135, 159, 0.3);
+  border-top-width: 4px;
+  padding: 0.42rem 0.58rem;
+}
+
+.portal--student .window-status-item:first-child {
+  border-left: 0;
+}
+
+.portal--student .window-status-item__value {
+  font-size: 1.02rem;
+}
+
+.portal--student .page-panel--toolbar {
+  border-left: 5px solid #6b6f9e;
+  background: #dfdfef;
+}
+
+.portal--student .toolbar-workbench {
+  gap: 0;
+  padding: 0.5rem 0.68rem 0.42rem;
+  border-top: 1px solid rgba(151, 157, 196, 0.22);
+}
+
+.portal--student .toolbar-section {
+  border: 0;
+  border-radius: 0;
+  border-left: 1px solid rgba(119, 126, 166, 0.28);
+  background: rgba(255, 255, 255, 0.28);
+  padding: 0.38rem 0.55rem 0.45rem;
+}
+
+.portal--student .toolbar-section:first-child {
+  border-left: 0;
+}
+
+.portal--student .toolbar-toggle {
+  border-radius: 3px;
+}
+
+.portal--student .page-panel--inspection {
+  border-left: 5px solid #7b839a;
+}
+
+.portal--student .page-panel--inspection-collapsed {
+  background: #e7e8d5;
+}
+
+.portal--student .course-group {
+  border-radius: 2px;
+  border-color: rgba(145, 150, 181, 0.55);
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.portal--student .course-group__header {
+  border-bottom-color: rgba(145, 150, 181, 0.32);
+  border-left: 5px solid rgba(94, 99, 137, 0.42);
+  border-radius: 0;
+  padding-left: 0.52rem;
+}
+
+.portal--student .course-group--requestable .course-group__header {
+  border-left-color: #a68216;
+  background: #ece2a5;
+}
+
+.portal--student .course-group--active .course-group__header {
+  border-left-color: #4d739c;
+  background: #d6e1ed;
+}
+
+.portal--student .course-group--enrolled .course-group__header {
+  border-left-color: #5f8d4b;
+  background: #d6e6cb;
+}
+
+.portal--student .course-group--blocked .course-group__header {
+  border-left-color: #80858f;
+  background: #e2e3e5;
+}
+
+.portal--student .course-group__count {
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.portal--student .portal-table th {
+  background: #c1c6df;
+}
+
+.portal--student .portal-table--column-banded thead th:nth-child(odd),
+.portal--student .portal-table--column-banded thead th:nth-child(even) {
+  background: #c0c5dc;
+}
+
+.portal--student .portal-table--column-banded tbody td:nth-child(odd),
+.portal--student .portal-table--column-banded tbody td:nth-child(even) {
+  background-image: none;
+}
+
+.portal--student .portal-row--selected,
+.portal--student .portal-row--selected td {
+  box-shadow: inset 4px 0 0 #b09423;
+}
+
+.portal--student .preview-pill,
+.portal--student .soft-tag {
+  border-radius: 3px;
+}
+
+.portal--student .withdraw-card {
+  border-radius: 2px;
+  border-left: 5px solid #4f7198;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.portal--student .announcement-highlight {
+  border-radius: 2px;
+  border-top-width: 3px;
+}
+
+.portal--student .quick-dock {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 2px;
+  border-left: 5px solid #5c7f36;
+  background: rgba(246, 244, 220, 0.98);
+  box-shadow: none;
+}
+
+.portal--student .quick-dock__header,
+.portal--student .quick-dock__metrics,
+.portal--student .quick-dock__actions {
+  margin: 0;
+}
+
+.portal--student .quick-dock__actions {
+  margin-left: auto;
+}
+
+.portal--student .portal-main--with-quick-dock {
+  padding-right: 0.7rem;
+}
+
+@media (max-width: 1100px) {
+  .portal--student .summary-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .portal--student .summary-strip__header {
+    border-right: 0;
+    border-bottom: 1px solid rgba(116, 135, 80, 0.22);
+    padding: 0 0 0.42rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .portal--student .quick-dock-wrap {
+    position: static;
+    display: block;
+    margin: 0 0 0.48rem;
+    pointer-events: auto;
+  }
+
+  .portal--student .portal-main--with-quick-dock {
+    padding-top: 0.65rem;
+    padding-right: 0.7rem;
+  }
+
+  .portal--student .quick-dock {
+    width: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+    padding: 0.42rem 0.55rem;
+    box-shadow: none;
+  }
+
+  .portal--student .quick-dock__header,
+  .portal--student .quick-dock__metrics,
+  .portal--student .quick-dock__actions {
+    margin: 0;
+  }
+
+  .portal--student .quick-dock__actions {
+    justify-content: stretch;
+  }
+
+  .portal--student .quick-link--primary {
+    width: 100%;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  .portal--student .portal-links__menu {
+    gap: 0.28rem 0.6rem;
+  }
+
+  .portal--student .portal-links__menu > .top-link::after {
+    content: none;
+  }
+
+  .portal--student .summary-strip,
+  .portal--student .window-status-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .portal--student .summary-strip__header {
+    border-right: 0;
+    border-bottom: 1px solid rgba(116, 135, 80, 0.22);
+    padding: 0 0 0.42rem;
+  }
+
+  .portal--student .summary-strip__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal--student .window-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .portal--student .window-status-strip__intro {
+    min-height: 0;
+  }
+
+  .portal--student .summary-strip__metrics,
+  .portal--student .window-status-grid,
+  .portal--student .toolbar-workbench {
+    border: 0;
+  }
+
+  .portal--student .summary-strip__metric,
+  .portal--student .window-status-item,
+  .portal--student .toolbar-section {
+    border-left: 0;
+    border-top: 1px solid rgba(153, 168, 115, 0.28);
+  }
+
+  .portal--student .summary-strip__metric:first-child,
+  .portal--student .window-status-item:first-child,
+  .portal--student .toolbar-section:first-child {
+    border-top: 0;
+  }
+}

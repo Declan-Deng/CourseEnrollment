@@ -43,7 +43,7 @@ function buildCycleSummary(content, referenceDate) {
   if (resultCheck && now > resultCheck) {
     return {
       headline: "This enrolment cycle has finished.",
-      detail: "Online requests and add/drop changes are closed for this cycle. Use this page as a reference archive for the published schedule.",
+      detail: "Online requests and Add / Drop changes are closed for this cycle. Use this page as a reference archive for the published schedule.",
       items: [
         ["Request deadline", content.keyDates?.requestClose],
         ["Add / Drop deadline", content.keyDates?.addDropClose],
@@ -142,9 +142,11 @@ export function AnnouncementPage({ semester, announcementContent }) {
         />
       </section>
 
-      <section className="page-panel page-panel--compact page-panel--note announcement-anchor-target" id="announcement-visa" tabIndex={-1}>
-        <h3>Student visa reminder (if applicable)</h3>
-        <p>{content.visaReminder}</p>
+      <section className="page-panel page-panel--compact page-panel--subtle announcement-anchor-target" id="announcement-visa" tabIndex={-1}>
+        <details className="announcement-subtle-note">
+          <summary>Student visa reminder (if applicable)</summary>
+          <p>{content.visaReminder}</p>
+        </details>
       </section>
 
       <section className="page-panel page-panel--compact announcement-anchor-target" id="announcement-guidelines" tabIndex={-1}>

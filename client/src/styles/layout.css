@@ -1,17 +1,16 @@
 .quick-dock-wrap {
-  position: fixed;
-  top: 5.7rem;
-  right: 0.85rem;
-  z-index: 40;
-  pointer-events: none;
+  position: static;
+  z-index: auto;
+  margin-bottom: 0.48rem;
+  pointer-events: auto;
 }
 
 .quick-dock {
-  width: min(214px, calc(100vw - 1.7rem));
+  width: 100%;
   border: 1px solid rgba(150, 157, 195, 0.58);
   border-radius: 10px;
   background: rgba(249, 248, 237, 0.98);
-  box-shadow: 0 10px 24px rgba(45, 53, 36, 0.12);
+  box-shadow: none;
   padding: 0.4rem 0.52rem 0.42rem;
   pointer-events: auto;
 }
@@ -26,7 +25,7 @@
 
 .quick-dock__header {
   justify-content: space-between;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.18rem;
   color: var(--subheading);
 }
 
@@ -70,7 +69,7 @@
 }
 
 .quick-dock__actions {
-  justify-content: flex-end;
+  justify-content: flex-start;
   margin-top: 0;
   flex-wrap: wrap;
 }
@@ -95,7 +94,7 @@
   border: 1px solid rgba(115, 138, 99, 0.28);
   color: #274225;
   padding: 0.22rem 0.55rem;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .page-panel--compact h3 {
@@ -108,6 +107,26 @@
 
 .page-panel--note {
   background: rgba(226, 232, 243, 0.92);
+}
+
+.page-panel--subtle {
+  background: rgba(239, 240, 227, 0.72);
+}
+
+.announcement-subtle-note {
+  padding: 0.34rem 0.72rem;
+}
+
+.announcement-subtle-note summary {
+  color: var(--subheading);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.announcement-subtle-note p {
+  padding: 0.42rem 0 0.12rem;
+  color: var(--muted);
 }
 
 .page-header {

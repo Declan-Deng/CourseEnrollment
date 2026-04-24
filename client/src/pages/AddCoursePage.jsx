@@ -227,8 +227,7 @@ const FilterSummaryBar = memo(function FilterSummaryBar({ chips, onClearAll }) {
   );
 });
 
-const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse, embedded = false }) {
-  const [expanded, setExpanded] = useState(Boolean(selectedCourse));
+const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse }) {
   const selectedSummary = useMemo(
     () => (selectedCourse ? getRuleSummary(selectedCourse) : null),
     [selectedCourse],
@@ -274,11 +273,6 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
       ),
     [entries],
   );
-  useEffect(() => {
-    if (selectedCourse) {
-      setExpanded(true);
-    }
-  }, [selectedCourse]);
 
   const collapsedNote = selectedCourse ? (
     <div className="course-group__compact-note">
@@ -299,124 +293,40 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
   );
 
   return (
-    <section
-      className={`course-group course-group--timetable${embedded ? " inspection-card inspection-card--timetable" : ""}${
-        expanded ? "" : " course-group--collapsed"
-      }`}
-    >
-      <button type="button" className="course-group__header" onClick={() => setExpanded((currentValue) => !currentValue)}>
-        <span className="course-group__title">
-          Timetable-aware view
-          <span className="course-group__count">{visibleCount}</span>
-        </span>
-        <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
-      </button>
-
-      <AnimatedGroupBody
-        expanded={expanded}
-        animation="height"
-        collapsedNote={collapsedNote}
-      >
-        <div className="timetable-board">
-          {TIMETABLE_DAYS.map((day) => {
-            const slots = slotsByDay[day] ?? [];
-
-            return (
-              <div key={day} className="timetable-day">
-                <strong>{day}</strong>
-                <div className="timetable-day__body">
-                  {slots.length === 0 ? <span className="status-text status-text--muted">No class</span> : null}
-                  {slots.map((entry) => (
-                    <div key={`${day}-${entry.id}-${entry.slot.start}`} className={`tt-chip tt-chip--${entry.tone}`}>
-                      <strong>
-                        {entry.code} {entry.subclass}
-                      </strong>
-                      <span>
-                        {entry.slot.start} - {entry.slot.end}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </AnimatedGroupBody>
-    </section>
-  );
-});
-
-const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLocateCourse }) {
-  if (!course) {
-    return (
-      <div className="inspection-card inspection-card--summary">
-        <div className="selected-course-summary selected-course-summary--empty">
-          <span className="selected-course-summary__eyebrow">Inspection panel</span>
-          <strong className="selected-course-summary__empty-title">No course selected</strong>
-          <div className="selected-course-summary__line">
-            <strong>Tip:</strong>
-            <span>Select a course title below when you want more detail or a timetable comparison.</span>
-          </div>
-        </div>
+    <div className="timetable-panel">
+      <div className="timetable-panel__summary">
+        {collapsedNote}
+        <span className="course-group__count">{visibleCount}</span>
       </div>
-    );
-  }
+      <div className="timetable-board">
+        {TIMETABLE_DAYS.map((day) => {
+          const slots = slotsByDay[day] ?? [];
 
-  const summary = getRuleSummary(course);
-  const policyMeta = getPolicyCompactMeta(course);
-
-  return (
-    <div className="inspection-card inspection-card--summary">
-      <div className="selected-course-summary">
-        <span className="selected-course-summary__eyebrow">Inspection panel</span>
-        <div className="selected-course-summary__header">
-          <div className="selected-course-summary__identity">
-            <strong>{course.code}</strong>
-            <span>Subclass {course.subclass}</span>
-          </div>
-          <span className="selected-course-summary__schedule">{formatSchedule(course)}</span>
-        </div>
-        <p className="selected-course-summary__title">{course.title}</p>
-        <div className="selected-course-summary__meta">
-          <span>{course.faculty}</span>
-          <span>{course.department}</span>
-        </div>
-        <div className="selected-course-summary__chips">
-          <span className={`preview-pill preview-pill--${summary.variant}`}>{summary.conclusion}</span>
-          <span className={getListTypeClass(course.listType)} title={getListTypeLabel(course.listType)}>
-            {course.listType}
-          </span>
-          <span className={getSubclassClass(course.subclass)}>Subclass {course.subclass}</span>
-          <span className={`soft-tag soft-tag--policy-compact soft-tag--policy-compact-${policyMeta.variant}`}>
-            {policyMeta.label}
-          </span>
-        </div>
-        {summary.reasonText ? (
-          <div className="selected-course-summary__line">
-            <strong>Reason:</strong>
-            <InlineCourseLink
-              text={summary.reasonText}
-              linkedCourseCode={summary.linkedCourseCode}
-              onJump={() => onLocateCourse(course, summary.linkedCourseCode)}
-            />
-          </div>
-        ) : null}
-        {summary.nextText ? (
-          <div className="selected-course-summary__line">
-            <strong>Next:</strong>
-            <InlineCourseLink
-              text={summary.nextText}
-              linkedCourseCode={summary.linkedCourseCode}
-              onJump={() => onLocateCourse(course, summary.linkedCourseCode)}
-            />
-          </div>
-        ) : null}
+          return (
+            <div key={day} className="timetable-day">
+              <strong>{day}</strong>
+              <div className="timetable-day__body">
+                {slots.length === 0 ? <span className="status-text status-text--muted">No class</span> : null}
+                {slots.map((entry) => (
+                  <div key={`${day}-${entry.id}-${entry.slot.start}`} className={`tt-chip tt-chip--${entry.tone}`}>
+                    <strong>
+                      {entry.code} {entry.subclass}
+                    </strong>
+                    <span>
+                      {entry.slot.start} - {entry.slot.end}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 });
 
-const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable, onLocateCourse }) {
+const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable }) {
   const [expanded, setExpanded] = useState(Boolean(selectedCourse));
 
   useEffect(() => {
@@ -426,22 +336,21 @@ const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable,
   }, [selectedCourse]);
 
   const compactNote = selectedCourse
-    ? `${selectedCourse.code} selected for closer review.`
-    : "Open only when you want course detail or a timetable comparison.";
+    ? `${selectedCourse.code} selected for timetable comparison.`
+    : "Open only when you want to compare schedules.";
 
   return (
     <section className={`page-panel page-panel--inspection${expanded ? "" : " page-panel--inspection-collapsed"}`}>
       <button type="button" className="course-group__header" onClick={() => setExpanded((currentValue) => !currentValue)}>
         <span className="course-group__title-block">
-          <span className="course-group__title">Inspection panel</span>
+          <span className="course-group__title">Timetable-aware view</span>
           <span className="course-group__description">{compactNote}</span>
         </span>
         <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
       </button>
       <AnimatedGroupBody expanded={expanded} animation="fade" collapsedNote={null}>
         <div className="inspection-tray">
-          <SelectedCourseSummary course={selectedCourse} onLocateCourse={onLocateCourse} />
-          <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} embedded />
+          <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} />
         </div>
       </AnimatedGroupBody>
     </section>
@@ -459,14 +368,14 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
       {hasDetail ? (
         <button
           type="button"
-          className="rule-preview__toggle"
+          className="rule-preview__link"
           onClick={(event) => {
             event.stopPropagation();
             setExpanded((currentValue) => !currentValue);
           }}
           aria-expanded={expanded}
         >
-          {expanded ? "Hide guidance" : "View guidance"}
+          {expanded ? "Hide guidance" : "Guidance"}
         </button>
       ) : null}
       {expanded && summary.reasonText ? (
@@ -489,6 +398,42 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
           />
         </div>
       ) : null}
+    </div>
+  );
+});
+
+const CapacityDemandCell = memo(function CapacityDemandCell({ course }) {
+  const primary = course.capacityView?.primary ?? "Not available";
+  const secondary = course.capacityView?.secondary ?? "";
+  const lotteryMatch = secondary.match(/^Lottery pool · (.+)$/);
+  const isFacultyReviewQueue = secondary === "Faculty review queue";
+  const rows = [];
+
+  if (lotteryMatch) {
+    const claimedMatch = lotteryMatch[1].match(/^(\d+)\/(\d+) seats claimed before draw$/);
+    const claimedLabel = claimedMatch ? `${claimedMatch[1]} / ${claimedMatch[2]} claimed` : lotteryMatch[1].replace(" before draw", "");
+
+    rows.push(["Capacity", claimedLabel]);
+    rows.push(["Queue", "Lottery pool"]);
+    rows.push(["Demand", primary]);
+  } else if (isFacultyReviewQueue) {
+    rows.push(["Demand", primary]);
+    rows.push(["Queue", "Faculty review"]);
+  } else {
+    rows.push(["Capacity", primary]);
+    if (secondary) {
+      rows.push(["Queue", secondary]);
+    }
+  }
+
+  return (
+    <div className="capacity-demand">
+      {rows.map(([label, value]) => (
+        <div key={`${label}-${value}`} className="capacity-demand__row">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
     </div>
   );
 });
@@ -777,10 +722,7 @@ const CourseTableRow = memo(function CourseTableRow({
         </div>
       </td>
       <td>
-        <div className="cell-title">
-          <strong>{course.capacityView.primary}</strong>
-          <span>{course.capacityView.secondary}</span>
-        </div>
+        <CapacityDemandCell course={course} />
       </td>
       <td>
         <div className="cell-title" title={policyMeta.title}>
@@ -1348,13 +1290,26 @@ export function AddCoursePage({
               <button
                 type="button"
                 className={onlyOpen ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
-                onClick={() => setOnlyOpen((currentValue) => !currentValue)}
+                aria-pressed={onlyOpen}
+                onClick={() => {
+                  setOnlyOpen((currentValue) => {
+                    const nextValue = !currentValue;
+
+                    if (nextValue) {
+                      setOnlyEnrolled(false);
+                    }
+
+                    return nextValue;
+                  });
+                }}
               >
                 Requestable only
+                {onlyOpen ? <span className="toolbar-toggle__state">On</span> : null}
               </button>
               <button
                 type="button"
                 className={onlyEnrolled ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
+                aria-pressed={onlyEnrolled}
                 onClick={() => {
                   setOnlyEnrolled((currentValue) => {
                     const nextValue = !currentValue;
@@ -1369,19 +1324,23 @@ export function AddCoursePage({
                 }}
               >
                 Enrolled only
+                {onlyEnrolled ? <span className="toolbar-toggle__state">On</span> : null}
               </button>
               <button
                 type="button"
                 className={toolsExpanded || advancedFilterCount ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
+                aria-pressed={toolsExpanded || advancedFilterCount > 0}
                 onClick={() => setToolsExpanded((currentValue) => !currentValue)}
                 aria-expanded={toolsExpanded}
                 aria-controls="course-center-advanced-filters"
               >
                 {`Advanced filters${advancedFilterCount ? ` (${advancedFilterCount})` : ""}`}
+                {toolsExpanded ? <span className="toolbar-toggle__state">Open</span> : null}
               </button>
             </div>
             <p className="toolbar-section__hint">
-              These controls filter which courses stay visible. Section headers below only expand or collapse each group.
+              These controls filter which offerings stay visible. Section headers below only expand or collapse each group,
+              including Blocked / Closed.
             </p>
           </div>
         </div>
@@ -1408,7 +1367,6 @@ export function AddCoursePage({
       <InspectionTray
         selectedCourse={selectedCourse}
         timetable={timetable}
-        onLocateCourse={locateRelatedCourse}
       />
 
       <section className="page-panel">

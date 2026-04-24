@@ -187,6 +187,34 @@ export function usePortalController() {
     const beforeCounts = countCourseGroups(data?.courses ?? []);
     const afterCounts = countCourseGroups(nextSnapshot?.courses ?? []);
 
+    if (actionKey === "cancel") {
+      const nextCourse = nextSnapshot?.courses?.find((item) => item.id === course.id);
+      const nextGroup = nextCourse ? getCourseGroup(nextCourse) : null;
+
+      return {
+        tone: "success",
+        title: "Request withdrawn",
+        detail:
+          nextGroup === "requestable"
+            ? `${course.code} can be requested again from Course Center.`
+            : `${course.code} is no longer in your active request pipeline.`,
+      };
+    }
+
+    if (actionKey === "drop") {
+      const nextCourse = nextSnapshot?.courses?.find((item) => item.id === course.id);
+      const nextGroup = nextCourse ? getCourseGroup(nextCourse) : null;
+
+      return {
+        tone: "warn",
+        title: "Course dropped",
+        detail:
+          nextGroup === "requestable"
+            ? `${course.code} was removed and is now available to request again.`
+            : `${course.code} was removed and related rule checks were refreshed.`,
+      };
+    }
+
     if (actionKey === "request" && beforeCounts.requestable > 0 && afterCounts.requestable === 0) {
       return {
         tone: "warn",

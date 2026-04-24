@@ -765,12 +765,12 @@ export function buildLockedDropDialog(course) {
           course.dropNote,
         ]
       : [
-          "This course follows the shared add/drop deadline and is currently outside the active online drop window.",
+          "This course follows the shared Add / Drop deadline and is currently outside the active online drop window.",
           course.dropNote,
         ],
     suggestedAction: manualRoute
       ? "Use the displayed support route instead of the online drop flow."
-      : "Wait for the next add/drop period or contact the faculty office for exceptional handling.",
+      : "Wait for the next Add / Drop period or contact the faculty office for exceptional handling.",
   };
 }
 

@@ -34,7 +34,7 @@ function RecordRow({ record, archived = false, onNavigate = null }) {
           <div className="cell-actions">
             {record.withdrawable ? (
               <button type="button" className="mini-button" onClick={() => onNavigate("cancel")}>
-                Manage withdrawal
+                Go to withdrawal page
               </button>
             ) : null}
             <button

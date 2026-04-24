@@ -203,6 +203,13 @@ export function formatSeatCount(count, suffix = "") {
   return `${safeCount} ${noun}${suffix ? ` ${suffix}` : ""}`;
 }
 
+export function formatRequestCount(count, suffix = "") {
+  const numericCount = Number(count);
+  const safeCount = Number.isFinite(numericCount) ? numericCount : 0;
+  const noun = safeCount === 1 ? "request" : "requests";
+  return `${safeCount} ${noun}${suffix ? ` ${suffix}` : ""}`;
+}
+
 export function formatCompactId(value, maxLength = 22) {
   const text = String(value ?? "");
 
@@ -326,7 +333,11 @@ export function buildOfferingPreviewDetail(offering, impact) {
     summary.availableSeatsBefore === summary.availableSeatsAfter
       ? `${formatSeatCount(summary.availableSeatsAfter, "available")}; no availability change.`
       : `Available seats ${summary.availableSeatsBefore} → ${summary.availableSeatsAfter} (${summary.seatsDelta >= 0 ? "+" : ""}${summary.seatsDelta}).`;
-  const requestLine = `${summary.affectedActiveRequests} active request(s) currently depend on this offering.`;
+  const affectedRequests = Number(summary.affectedActiveRequests) || 0;
+  const requestLine =
+    affectedRequests === 1
+      ? "1 active request currently depends on this offering."
+      : `${affectedRequests} active requests currently depend on this offering.`;
   const windowLine = summary.requestWindowClosingNow
     ? "This update closes the request window immediately."
     : summary.dropWindowClosingNow
@@ -445,7 +456,7 @@ export function buildBatchResolveDetail(action, preview) {
   const label = formatResolutionActionLabel(action);
 
   return [
-    `${label} ${preview.eligibleCount} policy-eligible request(s) from the current selection.`,
+    `${label} ${formatRequestCount(preview.eligibleCount, "from the current policy-eligible selection")}.`,
     `Selected: ${preview.selectedCount}. Skipped: ${preview.skippedCount}.`,
     `Lottery pool: ${preview.lotteryCount}. Faculty review: ${preview.reviewCount}. Waitlist: ${preview.waitlistCount}.`,
     action === "approve"

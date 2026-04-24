@@ -220,7 +220,7 @@ export function dropStudentEnrollment(snapshot, offeringId, { actor } = {}) {
               `Next relevant date: ${nextSnapshot.semester.keyDates?.resultCheckWindow ?? "record review window"}.`,
             ]
           : [
-              `Online add/drop closed on ${nextSnapshot.semester.keyDates?.addDropClose ?? "the add/drop deadline"}.`,
+              `Online Add / Drop closed on ${nextSnapshot.semester.keyDates?.addDropClose ?? "the Add / Drop deadline"}.`,
               `Contact ${nextSnapshot.semester.keyDates?.supportContact ?? "the programme office"} if an exceptional manual change is needed.`,
             ],
       ),

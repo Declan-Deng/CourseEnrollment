@@ -63,10 +63,10 @@ function getRequestNote(offering, semester) {
 
 function getDropNote(offering, semester) {
   if (offering.dropWindow?.isOpen) {
-    return `Online add/drop available until ${formatIsoDate(offering.dropWindow?.closesOn ?? semester.keyDates?.addDropClose ?? "the deadline")}.`;
+    return `Online Add / Drop available until ${formatIsoDate(offering.dropWindow?.closesOn ?? semester.keyDates?.addDropClose ?? "the deadline")}.`;
   }
 
-  return `Online add/drop is not available now. Contact ${semester.keyDates?.supportContact ?? "the programme office"}.`;
+  return `Online Add / Drop is not available now. Contact ${semester.keyDates?.supportContact ?? "the programme office"}.`;
 }
 
 function buildStudentActionSummary({
