@@ -6,6 +6,7 @@ function resolveWindowSummary(summary, semester) {
     addDropClose: windowSummary.addDropClose ?? semester?.keyDates?.addDropClose ?? null,
     resultCheckWindow: windowSummary.resultCheckWindow ?? semester?.keyDates?.resultCheckWindow ?? null,
     supportContact: windowSummary.supportContact ?? semester?.keyDates?.supportContact ?? null,
+    supportEmail: windowSummary.supportEmail ?? semester?.keyDates?.supportEmail ?? null,
   };
 }
 
@@ -137,11 +138,11 @@ export function WindowStatusStrip({ summary, semester, title = "Current window",
     Support: "support",
   };
   const rows = [
-    ["Request", windowSummary.requestClose],
-    ["Add / Drop", windowSummary.addDropClose],
-    ["Record Check", windowSummary.resultCheckWindow],
-    ["Support", windowSummary.supportContact],
-  ].filter(([, value]) => Boolean(value));
+    { label: "Request", value: windowSummary.requestClose },
+    { label: "Add / Drop", value: windowSummary.addDropClose },
+    { label: "Record Check", value: windowSummary.resultCheckWindow },
+    { label: "Support", value: windowSummary.supportContact, detail: windowSummary.supportEmail },
+  ].filter((item) => Boolean(item.value));
 
   if (rows.length === 0) {
     return null;
@@ -158,10 +159,11 @@ export function WindowStatusStrip({ summary, semester, title = "Current window",
           </span>
         </div>
         <div className="window-status-grid">
-          {rows.map(([label, value]) => (
+          {rows.map(({ label, value, detail }) => (
             <article key={label} className={`window-status-item window-status-item--${toneByLabel[label] ?? "default"}`}>
               <span className="window-status-item__label">{label}</span>
               <strong className="window-status-item__value">{value}</strong>
+              {detail ? <span className="window-status-item__detail">{detail}</span> : null}
             </article>
           ))}
         </div>

@@ -921,6 +921,9 @@ export function AddCoursePage({
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [onlyEnrolled, setOnlyEnrolled] = useState(preset === "enrolled");
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [advancedScheduleFilter, setAdvancedScheduleFilter] = useState("all");
+  const [advancedCapacityFilter, setAdvancedCapacityFilter] = useState("all");
+  const [advancedRuleFilter, setAdvancedRuleFilter] = useState("all");
   const [expandedGroups, setExpandedGroups] = useState(() =>
     Object.fromEntries(COURSE_GROUPS.map((group) => [group.id, group.defaultExpanded])),
   );
@@ -1024,10 +1027,25 @@ export function AddCoursePage({
         const matchesPolicy = policyFilter === "all" || getPolicyCompactMeta(course).label === policyFilter;
         const matchesOpen = !onlyOpen || course.requestOpen;
         const matchesEnrolled = !onlyEnrolled || course.currentState.kind === "approved";
+        const matchesAdvanced = matchesGroupViewFilters(course, {
+          scheduleFilter: advancedScheduleFilter,
+          capacityFilter: advancedCapacityFilter,
+          ruleFilter: advancedRuleFilter,
+        });
 
-        return matchesQuery && matchesFaculty && matchesPolicy && matchesOpen && matchesEnrolled;
+        return matchesQuery && matchesFaculty && matchesPolicy && matchesOpen && matchesEnrolled && matchesAdvanced;
       }),
-    [courses, normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled],
+    [
+      courses,
+      normalizedQuery,
+      facultyFilter,
+      policyFilter,
+      onlyOpen,
+      onlyEnrolled,
+      advancedScheduleFilter,
+      advancedCapacityFilter,
+      advancedRuleFilter,
+    ],
   );
 
   const courseOrderMap = useMemo(() => new Map(courses.map((course, index) => [course.id, index])), [courses]);
@@ -1035,8 +1053,27 @@ export function AddCoursePage({
   const [requestableShelfIds, setRequestableShelfIds] = useState([]);
   const lastFilterSignatureRef = useRef("");
   const filterSignature = useMemo(
-    () => JSON.stringify({ normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled }),
-    [normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled],
+    () =>
+      JSON.stringify({
+        normalizedQuery,
+        facultyFilter,
+        policyFilter,
+        onlyOpen,
+        onlyEnrolled,
+        advancedScheduleFilter,
+        advancedCapacityFilter,
+        advancedRuleFilter,
+      }),
+    [
+      normalizedQuery,
+      facultyFilter,
+      policyFilter,
+      onlyOpen,
+      onlyEnrolled,
+      advancedScheduleFilter,
+      advancedCapacityFilter,
+      advancedRuleFilter,
+    ],
   );
   const requestableShelfCourses = useMemo(() => {
     const courseById = new Map(filteredCourses.map((course) => [course.id, course]));
@@ -1130,11 +1167,35 @@ export function AddCoursePage({
       chips.push("Enrolled only");
     }
 
+    if (advancedScheduleFilter !== "all") {
+      chips.push(`Schedule: ${GROUP_SCHEDULE_FILTER_OPTIONS.find((option) => option.value === advancedScheduleFilter)?.label ?? advancedScheduleFilter}`);
+    }
+
+    if (advancedCapacityFilter !== "all") {
+      chips.push(`Capacity: ${GROUP_CAPACITY_FILTER_OPTIONS.find((option) => option.value === advancedCapacityFilter)?.label ?? advancedCapacityFilter}`);
+    }
+
+    if (advancedRuleFilter !== "all") {
+      chips.push(`Eligibility: ${GROUP_RULE_FILTER_OPTIONS.find((option) => option.value === advancedRuleFilter)?.label ?? advancedRuleFilter}`);
+    }
+
     return chips;
-  }, [normalizedQuery, query, facultyFilter, policyFilter, onlyOpen, onlyEnrolled]);
+  }, [
+    normalizedQuery,
+    query,
+    facultyFilter,
+    policyFilter,
+    onlyOpen,
+    onlyEnrolled,
+    advancedScheduleFilter,
+    advancedCapacityFilter,
+    advancedRuleFilter,
+  ]);
   const advancedFilterCount = useMemo(
-    () => [facultyFilter !== "all", policyFilter !== "all"].filter(Boolean).length,
-    [facultyFilter, policyFilter],
+    () =>
+      [advancedScheduleFilter !== "all", advancedCapacityFilter !== "all", advancedRuleFilter !== "all"].filter(Boolean)
+        .length,
+    [advancedScheduleFilter, advancedCapacityFilter, advancedRuleFilter],
   );
 
   const registerRowNode = useCallback((courseId, node) => {
@@ -1205,6 +1266,9 @@ export function AddCoursePage({
       setPolicyFilter("all");
       setOnlyOpen(false);
       setOnlyEnrolled(false);
+      setAdvancedScheduleFilter("all");
+      setAdvancedCapacityFilter("all");
+      setAdvancedRuleFilter("all");
     }
 
     if (!matchesGroupViewFilters(targetCourse, groupControls[targetGroupId])) {
@@ -1347,8 +1411,51 @@ export function AddCoursePage({
         {toolsExpanded ? (
           <div id="course-center-advanced-filters" className="toolbar-grid toolbar-grid--advanced">
             <div className="toolbar-advanced-note">
-              Column-level sort and filter tools are also available in each course group header below.
+              <strong>Advanced filters are now active across every group.</strong>
+              <span>Use these when you need schedule, capacity, or eligibility filters beyond the quick row.</span>
             </div>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Schedule</span>
+              <select value={advancedScheduleFilter} onChange={(event) => setAdvancedScheduleFilter(event.target.value)}>
+                {GROUP_SCHEDULE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Capacity</span>
+              <select value={advancedCapacityFilter} onChange={(event) => setAdvancedCapacityFilter(event.target.value)}>
+                {GROUP_CAPACITY_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Eligibility</span>
+              <select value={advancedRuleFilter} onChange={(event) => setAdvancedRuleFilter(event.target.value)}>
+                {GROUP_RULE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="toolbar-advanced-reset"
+              disabled={!advancedFilterCount}
+              onClick={() => {
+                setAdvancedScheduleFilter("all");
+                setAdvancedCapacityFilter("all");
+                setAdvancedRuleFilter("all");
+              }}
+            >
+              Reset advanced
+            </button>
           </div>
         ) : null}
         <FilterSummaryBar
@@ -1359,6 +1466,9 @@ export function AddCoursePage({
             setPolicyFilter("all");
             setOnlyOpen(false);
             setOnlyEnrolled(false);
+            setAdvancedScheduleFilter("all");
+            setAdvancedCapacityFilter("all");
+            setAdvancedRuleFilter("all");
             setToolsExpanded(false);
           }}
         />

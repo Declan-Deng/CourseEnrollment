@@ -251,6 +251,7 @@ export function buildBootstrapResponse(snapshot) {
         resultCheckWindow: snapshot.semester.keyDates?.resultCheckWindow ?? null,
         lotteryPublish: snapshot.semester.keyDates?.lotteryPublish ?? null,
         supportContact: snapshot.semester.keyDates?.supportContact ?? null,
+        supportEmail: snapshot.semester.keyDates?.supportEmail ?? null,
       },
       studentActionSummary,
       confirmedCredits,

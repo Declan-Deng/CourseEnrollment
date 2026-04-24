@@ -108,13 +108,6 @@ export function ResultsPage({
             <strong>{nextAction.headline}</strong>
           </p>
           <p>{nextAction.detail}</p>
-          <div className="action-list">
-            {(nextAction.actions?.length
-              ? nextAction.actions
-              : ["Review the sections below to confirm what is final, what is still active, and what has already been archived."]).map((item) => (
-              <p key={item}>{item}</p>
-            ))}
-          </div>
           <div className="focus-action-row">
             {nextActionButtons.map((action) => (
               <button key={action.label} type="button" className="mini-button" onClick={action.onClick}>

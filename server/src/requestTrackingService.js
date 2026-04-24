@@ -73,12 +73,6 @@ export function buildRequestStatusView({ approvedCourses = [], requestRecords = 
         activeRequests.length === 1
           ? `Review this request before ${semester?.keyDates?.requestClose ?? "the request deadline"}.`
           : `Review these requests before ${semester?.keyDates?.requestClose ?? "the request deadline"}.`;
-      actions.push(
-        activeRequests.length === 1
-          ? "Monitor this active request before the request deadline."
-          : "Monitor each active request before the request deadline.",
-      );
-      actions.push("Withdraw only the requests you no longer want to keep active.");
     } else {
       detail = `These requests remain in progress, but the online withdrawal window has closed. Check ${semester?.keyDates?.resultCheckWindow ?? "the final records window"} for updates instead.`;
       actions.push("Monitor these requests until the final records window.");
@@ -92,10 +86,6 @@ export function buildRequestStatusView({ approvedCourses = [], requestRecords = 
     headline = "No active request is pending right now.";
     detail = `You still have room in the current study load. Submit another request before ${semester?.keyDates?.requestClose ?? "the deadline"} if you need more credits.`;
     actions.push("Return to Course Center if you still need more credits.");
-  }
-
-  if (archivedChanges.length > 0) {
-    actions.push("Archived changes stay here for reference and do not need any further action.");
   }
 
   return {

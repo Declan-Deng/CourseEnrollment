@@ -1,7 +1,7 @@
 import { AcademicSummaryStrip, StatusText } from "../components/PortalShared";
 import { getListTypeClass, getListTypeLabel, getPolicyTagMeta, getRecordTone } from "../portalModel";
 
-function WithdrawCard({ record, busyCourseId, onAction, onInspectRecord, onNavigate }) {
+function WithdrawCard({ record, busyCourseId, onAction, onInspectRecord }) {
   const policyMeta = getPolicyTagMeta(record.course);
 
   return (
@@ -43,13 +43,6 @@ function WithdrawCard({ record, busyCourseId, onAction, onInspectRecord, onNavig
         </button>
         <button type="button" className="mini-button" onClick={() => onInspectRecord(record)}>
           View request details
-        </button>
-        <button
-          type="button"
-          className="mini-button"
-          onClick={() => onNavigate?.({ page: "add", courseId: record.course.id })}
-        >
-          Open course page
         </button>
       </div>
     </article>
@@ -115,7 +108,6 @@ export function CancelPage({
               busyCourseId={busyCourseId}
               onAction={onAction}
               onInspectRecord={onInspectRecord}
-              onNavigate={onNavigate}
             />
           ))}
         </div>

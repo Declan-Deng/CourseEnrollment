@@ -4,6 +4,7 @@ export const semesterKeyDates = {
   resultCheckWindow: "20–25 Feb 2026",
   lotteryPublish: "1 Feb 2026",
   supportContact: "Faculty Office",
+  supportEmail: "mechmsc1@hku.hk",
 };
 
 export const selectionSchedule = [

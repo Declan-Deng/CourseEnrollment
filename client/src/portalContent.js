@@ -28,6 +28,7 @@ const announcementFallbackContent = {
     resultCheckWindow: "20–25 Feb 2026",
     lotteryPublish: "1 Feb 2026",
     supportContact: "Faculty Office",
+    supportEmail: "mechmsc1@hku.hk",
   },
   highlights: [
     { label: "Selection window", value: "19–31 Dec 2025" },
