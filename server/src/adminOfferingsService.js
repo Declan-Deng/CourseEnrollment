@@ -58,6 +58,84 @@ function normalizeCodeList(values) {
   return [];
 }
 
+function buildPrerequisiteGraph(snapshot) {
+  return snapshot.offerings.reduce((graph, offering) => {
+    const courseCode = normalizeCourseCode(offering.courseCode);
+    const prerequisites = normalizeCodeList(offering.prerequisites);
+
+    if (!courseCode) {
+      return graph;
+    }
+
+    graph.set(courseCode, [...new Set([...(graph.get(courseCode) ?? []), ...prerequisites])]);
+    return graph;
+  }, new Map());
+}
+
+function hasPrerequisitePath(graph, fromCode, targetCode, visited = new Set()) {
+  const normalizedFrom = normalizeCourseCode(fromCode);
+  const normalizedTarget = normalizeCourseCode(targetCode);
+
+  if (!normalizedFrom || !normalizedTarget || visited.has(normalizedFrom)) {
+    return false;
+  }
+
+  visited.add(normalizedFrom);
+
+  for (const prerequisite of graph.get(normalizedFrom) ?? []) {
+    if (prerequisite === normalizedTarget || hasPrerequisitePath(graph, prerequisite, normalizedTarget, visited)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function validateOfferingConstraintCodes(snapshot, courseCode, prerequisites = [], corequisites = []) {
+  const normalizedCourseCode = normalizeCourseCode(courseCode);
+  const prerequisiteSet = new Set(prerequisites);
+  const courseCodes = new Set(snapshot.courses.map((course) => normalizeCourseCode(course.code)));
+  const offeredCourseCodes = new Set(snapshot.offerings.map((offering) => normalizeCourseCode(offering.courseCode)));
+
+  for (const code of [...prerequisites, ...corequisites]) {
+    if (code === normalizedCourseCode) {
+      throw badRequest(
+        "Invalid offering constraints.",
+        `${code} cannot be listed as a prerequisite or co-requisite of itself.`,
+      );
+    }
+
+    if (!courseCodes.has(code)) {
+      throw badRequest("Invalid offering constraints.", `${code} does not exist in the course catalog.`);
+    }
+
+    if (!offeredCourseCodes.has(code)) {
+      throw badRequest("Invalid offering constraints.", `${code} does not have an existing offering in this demo schedule.`);
+    }
+  }
+
+  for (const code of corequisites) {
+    if (prerequisiteSet.has(code)) {
+      throw badRequest(
+        "Invalid offering constraints.",
+        `${code} cannot be both a prerequisite and a co-requisite for the same offering.`,
+      );
+    }
+  }
+
+  const graph = buildPrerequisiteGraph(snapshot);
+  graph.set(normalizedCourseCode, prerequisites);
+
+  for (const prerequisite of prerequisites) {
+    if (hasPrerequisitePath(graph, prerequisite, normalizedCourseCode)) {
+      throw badRequest(
+        "Invalid offering constraints.",
+        `Prerequisite cycle detected between ${normalizedCourseCode} and ${prerequisite}.`,
+      );
+    }
+  }
+}
+
 function validateTimeLabel(value, fieldLabel) {
   if (!/^\d{2}:\d{2}$/.test(String(value ?? ""))) {
     throw badRequest("Invalid offering payload.", `${fieldLabel} must use HH:MM format.`);
@@ -176,6 +254,13 @@ function validateOfferingCreatePayload(snapshot, payload) {
   if (!Number.isInteger(payload.capacity) || payload.capacity < 0) {
     throw badRequest("Invalid offering payload.", "capacity must be a non-negative integer.");
   }
+
+  validateOfferingConstraintCodes(
+    snapshot,
+    courseCode,
+    normalizeCodeList(payload.prerequisites),
+    normalizeCodeList(payload.corequisites),
+  );
 
   validateSchedule(payload.schedule);
 

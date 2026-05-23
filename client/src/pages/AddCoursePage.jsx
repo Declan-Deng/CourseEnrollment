@@ -1287,15 +1287,17 @@ export function AddCoursePage({
 
   return (
     <div className="page-stack">
-      <AcademicSummaryStrip
-        student={student}
-        semester={semester}
-        summary={summary}
-        systemMeta={systemMeta}
-        title="Academic Summary"
-        onRefresh={onRefresh}
-      />
-      <WindowStatusStrip summary={summary} semester={semester} title="Current window and support" tone="info" />
+      <div className="course-hero-grid">
+        <AcademicSummaryStrip
+          student={student}
+          semester={semester}
+          summary={summary}
+          systemMeta={systemMeta}
+          title="Academic Summary"
+          onRefresh={onRefresh}
+        />
+        <WindowStatusStrip summary={summary} semester={semester} title="Current window and support" tone="info" />
+      </div>
 
       <section className="page-panel page-panel--toolbar page-panel--toolbar-compact">
         <h3>Course controls</h3>

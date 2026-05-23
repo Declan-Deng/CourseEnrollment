@@ -1,17 +1,20 @@
 .quick-dock-wrap {
   position: static;
   z-index: auto;
-  margin-bottom: 0.48rem;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.32rem;
   pointer-events: auto;
 }
 
 .quick-dock {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   border: 1px solid rgba(150, 157, 195, 0.58);
   border-radius: 10px;
   background: rgba(249, 248, 237, 0.98);
   box-shadow: none;
-  padding: 0.4rem 0.52rem 0.42rem;
+  padding: 0.26rem 0.36rem;
   pointer-events: auto;
 }
 
@@ -25,7 +28,7 @@
 
 .quick-dock__header {
   justify-content: space-between;
-  margin-bottom: 0.18rem;
+  margin-bottom: 0;
   color: var(--subheading);
 }
 
@@ -40,7 +43,7 @@
 
 .quick-dock__metrics {
   flex-wrap: wrap;
-  margin-bottom: 0.15rem;
+  margin-bottom: 0;
 }
 
 .quick-pill {
@@ -742,6 +745,28 @@
   padding: 0;
 }
 
+.staff-mode-banner {
+  display: grid;
+  gap: 0.12rem;
+  margin: 0.58rem 0.72rem 0;
+  padding: 0.45rem 0.58rem;
+  border: 1px solid rgba(93, 118, 159, 0.28);
+  border-left: 4px solid #5f7da6;
+  border-radius: 6px;
+  background: rgba(234, 240, 249, 0.82);
+}
+
+.staff-mode-banner strong {
+  color: #27385f;
+  font-size: 0.82rem;
+}
+
+.staff-mode-banner span {
+  color: #5f6b85;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
 .staff-form-row {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
@@ -774,9 +799,34 @@
   display: grid;
   gap: 0.18rem;
   padding: 0.45rem 0.55rem;
-  border: 1px solid rgba(152, 157, 190, 0.42);
+  border: 1px dashed rgba(116, 126, 160, 0.5);
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(239, 242, 248, 0.76);
+}
+
+.staff-readonly-value--metric {
+  border-left: 4px solid rgba(103, 117, 154, 0.48);
+}
+
+.staff-readonly-value__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.staff-readonly-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.1rem 0.36rem;
+  border-radius: 999px;
+  background: rgba(103, 117, 154, 0.12);
+  color: #53617f;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .staff-readonly-value strong {
@@ -787,6 +837,11 @@
 .staff-readonly-value span {
   font-size: 0.8rem;
   color: var(--subheading);
+}
+
+.staff-readonly-value .staff-readonly-chip {
+  color: #53617f;
+  font-size: 0.62rem;
 }
 
 .staff-form-row--stacked {
@@ -830,6 +885,10 @@
   font-size: 0.76rem;
   line-height: 1.45;
   color: #6d3f17;
+}
+
+.staff-inline-note--toolbar {
+  padding: 0.1rem 0.8rem 0.36rem;
 }
 
 .staff-context-grid {
@@ -1492,6 +1551,27 @@
   line-height: 1.3;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.staff-student-cell {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.staff-student-cell strong {
+  color: #263554;
+  font-size: 0.78rem;
+  line-height: 1.2;
+}
+
+.staff-student-cell span {
+  color: #5f6b86;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .staff-workflow-pill {

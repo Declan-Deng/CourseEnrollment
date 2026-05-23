@@ -65,10 +65,10 @@ function assertPolicyAllowsResolution(offering, request, resolutionType) {
     );
   }
 
-  if ((offering.allocationPolicy === "lottery" || request.status === "lotteryQueued") && resolutionType !== "manual-close") {
+  if (offering.allocationPolicy === "lottery" || request.status === "lotteryQueued") {
     throw conflict(
       "Lottery request requires lottery workflow.",
-      "Lottery pool requests cannot be manually approved, rejected, or waitlisted from the ordinary staff review queue.",
+      "Lottery pool requests cannot be approved, rejected, waitlisted, or closed from the ordinary staff review queue.",
     );
   }
 

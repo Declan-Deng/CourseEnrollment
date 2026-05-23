@@ -48,6 +48,7 @@ import {
   includesText,
   isResolutionActionAllowed,
   matchesOfferingWindow,
+  normalizeCodeList,
   OVERRIDE_OPTIONS,
   parseNonNegativeInteger,
   RESOLUTION_ACTION_OPTIONS,
@@ -156,7 +157,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const [offeringForm, setOfferingForm] = useState(null);
   const [offeringCreateForm, setOfferingCreateForm] = useState(buildDefaultOfferingCreateForm());
   const [overrideForm, setOverrideForm] = useState(buildDefaultOverrideForm());
-  const [requestResolutionNote, setRequestResolutionNote] = useState("Resolved in staff console.");
+  const [requestResolutionNote, setRequestResolutionNote] = useState("");
   const [offeringSearch, setOfferingSearch] = useState("");
   const [offeringPolicyFilter, setOfferingPolicyFilter] = useState("all");
   const [offeringWindowFilter, setOfferingWindowFilter] = useState("all");
@@ -373,6 +374,8 @@ export function StaffAdminPage({ onReturnToPortal }) {
     [selectedRequest, selectedRequestOffering],
   );
   const allowedRequestActions = selectedRequestWorkflow.allowedActions;
+  const requestResolutionNoteText = requestResolutionNote.trim();
+  const requestResolutionNoteValid = requestResolutionNoteText.length >= 12;
   const selectedRequestActionAllowed =
     Boolean(requestPreviewAction) && allowedRequestActions.includes(requestPreviewAction);
   const visibleSeatOccupants = useMemo(() => {
@@ -426,7 +429,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
     return { valid: true, detail: "" };
   }, [offeringForm, selectedOffering]);
-  const requestResolutionDisabled = !selectedRequest?.active || !selectedRequestActionAllowed;
+  const requestResolutionDisabled = !selectedRequest?.active || !selectedRequestActionAllowed || !requestResolutionNoteValid;
   const visibleOverrides = useMemo(
     () =>
       overrides.filter((override) => {
@@ -583,6 +586,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const offeringCreateValidation = useMemo(() => {
     const courseCode = normalizeCourseCode(offeringCreateForm.courseCode);
     const capacity = parseNonNegativeInteger(offeringCreateForm.capacity);
+    const prerequisites = normalizeCodeList(offeringCreateForm.prerequisites);
+    const corequisites = normalizeCodeList(offeringCreateForm.corequisites);
+    const knownCourseCodes = new Set(courseCodeOptions.map((course) => course.code));
+    const offeredCourseCodes = new Set(offerings.map((offering) => offering.courseCode));
 
     if (!courseCode || !courses.some((course) => course.code === courseCode)) {
       return { valid: false, detail: "Choose an existing course before creating an offering." };
@@ -608,12 +615,34 @@ export function StaffAdminPage({ onReturnToPortal }) {
       return { valid: false, detail: `Offering ${pendingOfferingId} already exists.` };
     }
 
+    for (const code of [...prerequisites, ...corequisites]) {
+      if (code === courseCode) {
+        return { valid: false, detail: `${code} cannot be its own prerequisite or co-requisite.` };
+      }
+
+      if (!knownCourseCodes.has(code)) {
+        return { valid: false, detail: `${code} does not exist in the course catalog.` };
+      }
+
+      if (!offeredCourseCodes.has(code)) {
+        return { valid: false, detail: `${code} does not have an existing offering in this schedule.` };
+      }
+    }
+
+    const prerequisiteSet = new Set(prerequisites);
+    const overlappingConstraint = corequisites.find((code) => prerequisiteSet.has(code));
+    if (overlappingConstraint) {
+      return { valid: false, detail: `${overlappingConstraint} cannot be both prerequisite and co-requisite.` };
+    }
+
     return { valid: true, detail: "" };
   }, [
     courseCodeOptions,
     courses,
     offeringCreateForm.capacity,
     offeringCreateForm.courseCode,
+    offeringCreateForm.corequisites,
+    offeringCreateForm.prerequisites,
     offeringCreateForm.scheduleDay,
     offeringCreateForm.scheduleEnd,
     offeringCreateForm.scheduleStart,
@@ -816,7 +845,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
           selectedRequest.id,
           {
             action: requestPreviewAction,
-            note: requestResolutionNote.trim() || "Resolved in staff console.",
+            note: requestResolutionNoteText || "Preview only; final action requires an office note.",
           },
           actorId,
         );
@@ -860,9 +889,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setBanner({ tone, title, detail });
   }
 
-  function getSelectableRowClass(isSelected) {
+  function getSelectableRowClass(isSelected, selectedMode = "selected") {
+    const selectedClass = selectedMode === "viewing" ? "portal-row--staff-viewing" : "portal-row--selected portal-row--staff-selected";
+
     return isSelected
-      ? "portal-row portal-row--staff-selectable portal-row--selected portal-row--staff-selected"
+      ? `portal-row portal-row--staff-selectable ${selectedClass}`
       : "portal-row portal-row--staff-selectable";
   }
 
@@ -915,7 +946,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }
 
   function selectActiveVisibleRequests() {
-    setSelectedRequestIds(visibleRequests.filter((item) => item.active).map((item) => item.id));
+    setSelectedRequestIds(
+      visibleRequests
+        .filter((item) => item.active && getRequestWorkflow(item, offeringById.get(item.offeringId)).allowedActions.length > 0)
+        .map((item) => item.id),
+    );
   }
 
   function clearSelectedRequests() {
@@ -1090,6 +1125,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
       return;
     }
 
+    if (!requestResolutionNoteValid) {
+      showBanner(
+        "error",
+        "Resolution note required.",
+        "Enter a specific office note of at least 12 characters before resolving a request.",
+      );
+      return;
+    }
+
     if (!isResolutionActionAllowed(selectedRequest, selectedRequestOffering, action)) {
       showBanner(
         "error",
@@ -1106,7 +1150,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
           selectedRequest.id,
           {
             action,
-            note: requestResolutionNote.trim() || "Resolved in staff console.",
+            note: requestResolutionNoteText,
           },
           actorId,
         ),
@@ -1119,6 +1163,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
       return;
     }
 
+    if (!requestResolutionNoteValid) {
+      showBanner(
+        "error",
+        "Resolution note required.",
+        "Enter the student-facing reason and office context before confirming this action.",
+      );
+      return;
+    }
+
     setConfirmAction({
       title: `${formatResolutionActionLabel(action)} for ${selectedRequest.id}?`,
       detail: buildRequestPreviewDetail(selectedRequest, action, requestPreviewImpact),
@@ -1127,6 +1180,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }
 
   async function handleBatchResolve(action) {
+    if (!requestResolutionNoteValid) {
+      showBanner(
+        "error",
+        "Batch note required.",
+        "Enter a specific office note before running a batch action; it will be written to every resolved request.",
+      );
+      return;
+    }
+
     const resolvable = selectedVisibleRequests.filter((request) =>
       request.active && isResolutionActionAllowed(request, offeringById.get(request.offeringId), action),
     );
@@ -1152,7 +1214,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
             request.id,
             {
               action,
-              note: requestResolutionNote.trim() || "Resolved in staff console.",
+              note: requestResolutionNoteText,
             },
             actorId,
           );
@@ -1400,6 +1462,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
           <div className="staff-create-grid">
             <section className="page-panel">
               <h3>Create new course</h3>
+              <div className="staff-mode-banner">
+                <strong>Create mode</strong>
+                <span>Adds a static course identity only. It does not edit the selected offering below.</span>
+              </div>
               <div className="staff-form-grid">
                 <div className="staff-form-row">
                   <label>Course Code</label>
@@ -1468,6 +1534,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
             <section className="page-panel">
               <h3>Create new offering</h3>
+              <div className="staff-mode-banner">
+                <strong>Create mode</strong>
+                <span>Creates {pendingOfferingId || "a new offering"} from this form. The editor below remains tied to the selected existing row.</span>
+              </div>
               <div className="staff-form-grid">
                 <div className="staff-form-row">
                   <label>Course</label>
@@ -1571,11 +1641,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </div>
                 <div className="staff-form-row">
                   <label>Prerequisites</label>
-                  <input value={offeringCreateForm.prerequisites} onChange={(event) => updateOfferingCreateForm("prerequisites", event.target.value)} placeholder="COMP7503, COMP7506" />
+                  <input value={offeringCreateForm.prerequisites} onChange={(event) => updateOfferingCreateForm("prerequisites", event.target.value)} placeholder="COMP7103, STAT7600" />
                 </div>
                 <div className="staff-form-row">
                   <label>Corequisites</label>
-                  <input value={offeringCreateForm.corequisites} onChange={(event) => updateOfferingCreateForm("corequisites", event.target.value)} placeholder="STAT7601" />
+                  <input value={offeringCreateForm.corequisites} onChange={(event) => updateOfferingCreateForm("corequisites", event.target.value)} placeholder="TDLL6024" />
                 </div>
                 <div className="staff-inline-actions">
                   <button
@@ -1712,7 +1782,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
               <h3>{selectedOffering ? `Editing existing offering · ${selectedOffering.courseCode}` : "Offering Editor"}</h3>
               {selectedOffering ? (
                 <div className="staff-selection-banner" aria-live="polite">
-                  <div className="staff-selection-banner__eyebrow">Selected offering</div>
+                  <div className="staff-selection-banner__eyebrow">Editing selected existing offering</div>
                   <div className="staff-selection-banner__main">
                     <strong>{selectedOffering.courseCode}</strong>
                     <span className="staff-selection-banner__id">{selectedOffering.id}</span>
@@ -1786,15 +1856,21 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   </div>
                   <div className="staff-form-row">
                     <label>Seats Taken</label>
-                    <div className="staff-readonly-value">
-                      <strong>{selectedOffering.seatsTaken}</strong>
+                    <div className="staff-readonly-value staff-readonly-value--metric">
+                      <div className="staff-readonly-value__header">
+                        <strong>{selectedOffering.seatsTaken}</strong>
+                        <span className="staff-readonly-chip">Read-only</span>
+                      </div>
                       <span>Derived from the current occupied seat roster.</span>
                     </div>
                   </div>
                   <div className="staff-form-row">
                     <label>Waitlist Count</label>
-                    <div className="staff-readonly-value">
-                      <strong>{selectedOffering.waitlistCount}</strong>
+                    <div className="staff-readonly-value staff-readonly-value--metric">
+                      <div className="staff-readonly-value__header">
+                        <strong>{selectedOffering.waitlistCount}</strong>
+                        <span className="staff-readonly-chip">Read-only</span>
+                      </div>
                       <span>Read-only count from the current waiting queue.</span>
                     </div>
                   </div>
@@ -2013,7 +2089,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 <span>{requestSummary.queued} queued</span>
                 <span>{requestSummary.waitlist} waitlist</span>
                 <span>{requestSummary.visible} visible</span>
-                <span>{requestSummary.selected} selected</span>
+                <span>{requestSummary.selected} batch selected</span>
               </div>
               <div className="staff-table-controls">
                 <label className="staff-checkbox">
@@ -2039,17 +2115,22 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <input value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} />
                 </label>
                 <button type="button" className="mini-button" onClick={selectAllVisibleRequests} disabled={!visibleRequests.length}>
-                  Select visible rows
-                </button>
-                <button type="button" className="mini-button" onClick={selectActiveVisibleRequests} disabled={!visibleRequests.some((item) => item.active)}>
-                  Select active requests
-                </button>
-                <button type="button" className="mini-button" onClick={clearSelectedRequests} disabled={!selectedRequestIds.length}>
-                  Clear
+                  Batch-select visible
                 </button>
                 <button
                   type="button"
-                  className="mini-button"
+                  className="mini-button mini-button--primary"
+                  onClick={selectActiveVisibleRequests}
+                  disabled={!visibleRequests.some((item) => item.active && getRequestWorkflow(item, offeringById.get(item.offeringId)).allowedActions.length > 0)}
+                >
+                  Batch-select resolvable
+                </button>
+                <button type="button" className="mini-button" onClick={clearSelectedRequests} disabled={!selectedRequestIds.length}>
+                  Clear batch
+                </button>
+                <button
+                  type="button"
+                  className="mini-button mini-button--primary"
                   onClick={() =>
                     setConfirmAction({
                       title: "Approve selected requests?",
@@ -2057,7 +2138,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       onConfirm: () => handleBatchResolve("approve"),
                     })
                   }
-                  disabled={!requestBatchPreviews.approve.eligibleCount}
+                  disabled={!requestBatchPreviews.approve.eligibleCount || !requestResolutionNoteValid}
                 >
                   Batch Approve
                 </button>
@@ -2071,13 +2152,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       onConfirm: () => handleBatchResolve("waitlist"),
                     })
                   }
-                  disabled={!requestBatchPreviews.waitlist.eligibleCount}
+                  disabled={!requestBatchPreviews.waitlist.eligibleCount || !requestResolutionNoteValid}
                 >
                   Batch Waitlist
                 </button>
                 <button
                   type="button"
-                  className="mini-button"
+                  className="mini-button mini-button--danger"
                   onClick={() =>
                     setConfirmAction({
                       title: "Reject selected requests?",
@@ -2085,13 +2166,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       onConfirm: () => handleBatchResolve("reject"),
                     })
                   }
-                  disabled={!requestBatchPreviews.reject.eligibleCount}
+                  disabled={!requestBatchPreviews.reject.eligibleCount || !requestResolutionNoteValid}
                 >
                   Batch Reject
                 </button>
                 <button
                   type="button"
-                  className="mini-button"
+                  className="mini-button mini-button--danger"
                   onClick={() =>
                     setConfirmAction({
                       title: "Close selected requests without outcome?",
@@ -2099,16 +2180,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       onConfirm: () => handleBatchResolve("manual-close"),
                     })
                   }
-                  disabled={!requestBatchPreviews["manual-close"].eligibleCount}
+                  disabled={!requestBatchPreviews["manual-close"].eligibleCount || !requestResolutionNoteValid}
                 >
                   Batch Close
                 </button>
               </div>
+              <p className="staff-inline-note staff-inline-note--toolbar">
+                Batch actions use the checkboxes only. The highlighted row is just the request currently open in the detail panel.
+                A specific resolution note is required before any batch action is enabled.
+              </p>
               {selectedRequestCount ? (
                 <div className="staff-impact-grid staff-impact-grid--compact" aria-live="polite">
                   <div className="staff-decision-card staff-decision-card--info">
                     <span className="staff-decision-card__label">Batch selection</span>
-                    <strong>{formatRequestCount(selectedRequestCount)} selected</strong>
+                    <strong>{formatRequestCount(selectedRequestCount)} batch selected</strong>
                     <p>
                       {requestBatchPreviews.approve.reviewCount} faculty review, {requestBatchPreviews.approve.lotteryCount} lottery pool,
                       and {formatRequestCount(requestBatchPreviews.approve.waitlistCount)} in waitlist handling.
@@ -2134,7 +2219,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 <table className="portal-table portal-table--staff-requests">
                   <thead>
                     <tr>
-                      <th>Select</th>
+                      <th>Batch</th>
                       <th>Request</th>
                       <th>Student</th>
                       <th>Offering</th>
@@ -2151,24 +2236,32 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         return (
                         <tr
                           key={request.id}
-                          className={getSelectableRowClass(request.id === selectedRequestId)}
+                          className={getSelectableRowClass(request.id === selectedRequestId, "viewing")}
                           onClick={() => setSelectedRequestId(request.id)}
                           onKeyDown={(event) => handleSelectableRowKeyDown(event, () => setSelectedRequestId(request.id))}
                           tabIndex={0}
-                          aria-selected={request.id === selectedRequestId}
+                          aria-current={request.id === selectedRequestId ? "true" : undefined}
+                          aria-selected={selectedRequestIdSet.has(request.id)}
                         >
                           <td onClick={(event) => event.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={selectedRequestIdSet.has(request.id)}
                               onChange={() => toggleRequestSelection(request.id)}
-                              aria-label={`Select ${request.id}`}
+                              aria-label={`Batch select ${request.id}`}
                             />
                           </td>
                           <td>
                             <span className="staff-mono-cell" title={request.id}>{formatCompactId(request.id)}</span>
                           </td>
-                          <td>{request.studentId}</td>
+                          <td>
+                            <div className="staff-student-cell">
+                              <strong>{request.student?.name ?? request.studentId}</strong>
+                              <span>{request.studentId}</span>
+                              <span>{request.student?.programme ?? "Programme unavailable"}</span>
+                              {request.student?.email ? <span>{request.student.email}</span> : null}
+                            </div>
+                          </td>
                           <td>{request.offeringId}</td>
                           <td>
                             <div className={`staff-workflow-pill staff-workflow-pill--${workflow.mode}`}>
@@ -2198,13 +2291,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
               {selectedRequest ? (
                 <div className="staff-form-grid">
                   <div className="staff-selection-banner" aria-live="polite">
-                    <div className="staff-selection-banner__eyebrow">Selected request</div>
+                    <div className="staff-selection-banner__eyebrow">Viewing request</div>
                     <div className="staff-selection-banner__main">
                       <strong>{selectedRequest.id}</strong>
                       <span>{selectedRequest.offeringId}</span>
                     </div>
                     <div className="staff-selection-banner__note">
                       {selectedRequest.student?.name ?? selectedRequest.studentId} · {formatRequestStatusLabel(selectedRequest.status)}
+                      {selectedRequestIdSet.has(selectedRequest.id)
+                        ? " · Included in batch selection"
+                        : " · Detail view only, not batch selected"}
                     </div>
                   </div>
                   <div className="staff-context-grid">
@@ -2253,101 +2349,106 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       </div>
                     </div>
                   </div>
-                  <div className="staff-form-row">
-                    <label>Preview action</label>
-                    {allowedRequestActions.length ? (
-                      <select value={requestPreviewAction} onChange={(event) => setRequestPreviewAction(event.target.value)}>
-                        {RESOLUTION_ACTION_OPTIONS
-                          .filter(([value]) => allowedRequestActions.includes(value))
-                          .map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                      </select>
-                    ) : (
-                      <div className="staff-readonly-value">
-                        <strong>No action available</strong>
-                        <span>{selectedRequestWorkflow.warning || "This request cannot be resolved again."}</span>
-                      </div>
-                    )}
-                  </div>
                   <div className="staff-form-row staff-form-row--stacked">
-                    <label>Resolution Note</label>
+                    <label>{allowedRequestActions.length ? "Resolution Note" : "Batch / audit note"}</label>
                     <textarea
                       className="staff-note-input"
                       value={requestResolutionNote}
                       onChange={(event) => setRequestResolutionNote(event.target.value)}
+                      placeholder="Record the office reason and student-facing consequence before resolving."
                     />
+                    {!requestResolutionNoteValid ? (
+                      <p className="staff-inline-note">Required before any request action: at least 12 characters. This note is written to each resolved request and audit event.</p>
+                    ) : null}
                   </div>
-                  <div className="staff-form-row staff-form-row--stacked">
-                    <label>Resolution impact preview</label>
-                    {requestPreviewBusy ? (
-                      <p className="staff-inline-note">Checking how this resolution would change the request and shared offering…</p>
-                    ) : requestPreviewImpact?.error ? (
-                      <div className="staff-decision-card staff-decision-card--error">
-                        <strong>{requestPreviewImpact.error.headline}</strong>
-                        <p>{requestPreviewImpact.error.detail}</p>
+                  {allowedRequestActions.length ? (
+                    <>
+                      <div className="staff-form-row">
+                        <label>Preview action</label>
+                        <select value={requestPreviewAction} onChange={(event) => setRequestPreviewAction(event.target.value)}>
+                          {RESOLUTION_ACTION_OPTIONS
+                            .filter(([value]) => allowedRequestActions.includes(value))
+                            .map(([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ))}
+                        </select>
                       </div>
-                    ) : requestPreviewImpact?.summary ? (
-                      <div className="staff-impact-grid">
-                        <div className="staff-decision-card staff-decision-card--info">
-                          <span className="staff-decision-card__label">Status</span>
-                          <strong>
-                            {formatRequestStatusLabel(requestPreviewImpact.summary.statusBefore)} →{" "}
-                            {formatRequestStatusLabel(requestPreviewImpact.summary.statusAfter)}
-                          </strong>
-                          <p>
-                            {requestPreviewImpact.summary.activeAfter
-                              ? "The request remains active after this action."
-                              : "The request will be closed after this action."}
-                          </p>
-                        </div>
-                        <div className="staff-decision-card staff-decision-card--warn">
-                          <span className="staff-decision-card__label">Supply impact</span>
-                          <strong>
-                            Seats {requestPreviewImpact.summary.seatsTakenDelta >= 0 ? "+" : ""}
-                            {requestPreviewImpact.summary.seatsTakenDelta}, waitlist {requestPreviewImpact.summary.waitlistDelta >= 0 ? "+" : ""}
-                            {requestPreviewImpact.summary.waitlistDelta}
-                          </strong>
-                          <p>Shared offering counts after this resolution.</p>
-                        </div>
-                        <div className={`staff-decision-card ${requestPreviewImpact.summary.enrollmentCreated ? "staff-decision-card--success" : "staff-decision-card--neutral"}`}>
-                          <span className="staff-decision-card__label">Enrolment</span>
-                          <strong>{requestPreviewImpact.summary.enrollmentCreated ? "Enrolment will be created" : "No new enrolment"}</strong>
-                          <p>{selectedRequest.offeringId}</p>
-                        </div>
+                      <div className="staff-form-row staff-form-row--stacked">
+                        <label>Resolution impact preview</label>
+                        {requestPreviewBusy ? (
+                          <p className="staff-inline-note">Checking how this resolution would change the request and shared offering…</p>
+                        ) : requestPreviewImpact?.error ? (
+                          <div className="staff-decision-card staff-decision-card--error">
+                            <strong>{requestPreviewImpact.error.headline}</strong>
+                            <p>{requestPreviewImpact.error.detail}</p>
+                          </div>
+                        ) : requestPreviewImpact?.summary ? (
+                          <div className="staff-impact-grid">
+                            <div className="staff-decision-card staff-decision-card--info">
+                              <span className="staff-decision-card__label">Student outcome</span>
+                              <strong>
+                                {formatRequestStatusLabel(requestPreviewImpact.summary.statusBefore)} →{" "}
+                                {formatRequestStatusLabel(requestPreviewImpact.summary.statusAfter)}
+                              </strong>
+                              <p>
+                                {requestPreviewImpact.summary.activeAfter
+                                  ? "The request remains active after this action."
+                                  : "The request closes, the note becomes the student-facing message, and an audit event is written."}
+                              </p>
+                            </div>
+                            <div className="staff-decision-card staff-decision-card--warn">
+                              <span className="staff-decision-card__label">Supply impact</span>
+                              <strong>
+                                Seats {requestPreviewImpact.summary.seatsTakenDelta >= 0 ? "+" : ""}
+                                {requestPreviewImpact.summary.seatsTakenDelta}, waitlist {requestPreviewImpact.summary.waitlistDelta >= 0 ? "+" : ""}
+                                {requestPreviewImpact.summary.waitlistDelta}
+                              </strong>
+                              <p>Shared offering counts after this resolution.</p>
+                            </div>
+                            <div className={`staff-decision-card ${requestPreviewImpact.summary.enrollmentCreated ? "staff-decision-card--success" : "staff-decision-card--neutral"}`}>
+                              <span className="staff-decision-card__label">Enrolment</span>
+                              <strong>{requestPreviewImpact.summary.enrollmentCreated ? "Enrolment will be created" : "No new enrolment"}</strong>
+                              <p>{requestPreviewImpact.summary.enrollmentCreated ? "The student receives an approved enrolment record." : "No seat is awarded by this action."}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="staff-inline-note">Choose an allowed action to inspect its impact before resolving the request.</p>
+                        )}
                       </div>
-                    ) : (
-                      <p className="staff-inline-note">
-                        {allowedRequestActions.length
-                          ? "Choose an allowed action to inspect its impact before resolving the request."
-                          : "This request is not eligible for staff resolution under its current workflow."}
-                      </p>
-                    )}
-                  </div>
-                  <div className="staff-inline-actions">
-                    {RESOLUTION_ACTION_OPTIONS
-                      .filter(([value]) => allowedRequestActions.includes(value))
-                      .map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          className={value === "approve" ? "mini-button mini-button--primary" : "mini-button"}
-                          onClick={() => handleConfirmResolveRequest(value)}
-                          disabled={!selectedRequest?.active}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                  </div>
-                  {requestResolutionDisabled ? (
-                    <p className="staff-inline-note">
-                      {selectedRequest?.active
-                        ? "The selected preview action is not allowed for this workflow."
-                        : "Only active requests can be resolved. Change the filters or select an active record."}
-                    </p>
-                  ) : null}
+                      <div className="staff-inline-actions">
+                        {RESOLUTION_ACTION_OPTIONS
+                          .filter(([value]) => allowedRequestActions.includes(value))
+                          .map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              className={value === "approve" ? "mini-button mini-button--primary" : value === "reject" || value === "manual-close" ? "mini-button mini-button--danger" : "mini-button"}
+                              onClick={() => handleConfirmResolveRequest(value)}
+                              disabled={requestResolutionDisabled}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                      </div>
+                      {requestResolutionDisabled ? (
+                        <p className="staff-inline-note">
+                          {!selectedRequest?.active
+                            ? "Only active requests can be resolved. Change the filters or select an active record."
+                            : !requestResolutionNoteValid
+                              ? "Add a specific office note before enabling resolution actions."
+                              : "The selected preview action is not allowed for this workflow."}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <div className="staff-decision-card staff-decision-card--warn">
+                      <span className="staff-decision-card__label">Ordinary resolution locked</span>
+                      <strong>No manual action is available here</strong>
+                      <p>{selectedRequestWorkflow.warning || "This workflow must be completed outside the ordinary request resolution queue."}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p>Select a request to resolve it.</p>

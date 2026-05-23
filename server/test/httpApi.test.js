@@ -149,7 +149,11 @@ test("admin can create courses and offerings over HTTP", async () => {
   assert.equal(createdOffering.body.offering.id, "MECH7998-A-S2");
   assert.equal(createdOffering.body.offering.title, "Systems integration studio");
 
-  const bootstrap = await requestJson("/api/bootstrap");
+  const bootstrap = await requestJson("/api/bootstrap", {
+    headers: {
+      "x-student-id": "4000000001",
+    },
+  });
   const adminCourses = await requestJson("/api/admin/courses", {
     headers: {
       "x-actor-type": "staff",
@@ -199,7 +203,11 @@ test("admin offering preview returns impact summary without mutating state", asy
   assert.equal(preview.body.seatOccupantSummary.generatedCount, 28);
   assert.equal(preview.body.seatOccupants.at(-1)?.source, "faculty-record");
 
-  const bootstrap = await requestJson("/api/bootstrap");
+  const bootstrap = await requestJson("/api/bootstrap", {
+    headers: {
+      "x-student-id": "4000000001",
+    },
+  });
   const offering = bootstrap.body.courses.find((course) => course.id === "IDAT7212-A-S2");
   assert.equal(offering.capacityView.primary, "7 seats left");
 });
@@ -339,7 +347,7 @@ test("admin request resolution preview returns a read-only impact summary", asyn
       "x-actor-id": "staff-http-request-preview-001",
     },
   });
-  const requestId = requests.body.find((item) => item.offeringId === "COMP7906-B-S2")?.id;
+  const requestId = requests.body.find((item) => item.offeringId === "MEBS6003-A-S2")?.id;
 
   assert.ok(requestId);
 
@@ -358,12 +366,16 @@ test("admin request resolution preview returns a read-only impact summary", asyn
 
   assert.equal(preview.response.status, 200);
   assert.equal(preview.body.ok, true);
-  assert.equal(preview.body.summary.statusBefore, "lotteryQueued");
+  assert.equal(preview.body.summary.statusBefore, "pendingReview");
   assert.equal(preview.body.summary.statusAfter, "manuallyResolved");
 
-  const bootstrap = await requestJson("/api/bootstrap");
+  const bootstrap = await requestJson("/api/bootstrap", {
+    headers: {
+      "x-student-id": "4000000001",
+    },
+  });
   assert.ok(
-    bootstrap.body.requestStatusView.activeRequests.some((record) => record.course.id === "COMP7906-B-S2"),
+    bootstrap.body.requestStatusView.activeRequests.some((record) => record.course.id === "MEBS6003-A-S2"),
   );
 });
 
@@ -398,7 +410,7 @@ test("admin request resolution preview can describe an invalid approval without 
   assert.match(preview.body.headline, /lottery/i);
 });
 
-test("admin request resolution endpoint rejects ordinary lottery approvals", async () => {
+test("admin request resolution endpoint rejects ordinary lottery resolutions", async () => {
   const requests = await requestJson("/api/admin/requests?active=true", {
     headers: {
       "x-actor-type": "staff",
@@ -426,4 +438,22 @@ test("admin request resolution endpoint rejects ordinary lottery approvals", asy
   assert.equal(resolution.body.ok, false);
   assert.match(resolution.body.headline, /lottery/i);
   assert.match(resolution.body.message, /ordinary staff review queue/i);
+
+  const manualClose = await requestJson(`/api/admin/requests/${encodeURIComponent(requestId)}/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-actor-type": "staff",
+      "x-actor-id": "staff-http-lottery-guard-001",
+    },
+    body: JSON.stringify({
+      action: "manual-close",
+      note: "Should not close a lottery pool request from ordinary staff queue.",
+    }),
+  });
+
+  assert.equal(manualClose.response.status, 409);
+  assert.equal(manualClose.body.ok, false);
+  assert.match(manualClose.body.headline, /lottery/i);
+  assert.match(manualClose.body.message, /ordinary staff review queue/i);
 });

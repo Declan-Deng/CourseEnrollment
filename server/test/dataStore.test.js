@@ -313,7 +313,7 @@ test("admin updates can change offering windows and manually resolve requests", 
   assert.equal(previewAfterLock.uiVariant, "closed");
 
   const activeRequests = await listAdminRequestView({ filters: { active: true } });
-  const existingRequest = activeRequests.find((request) => request.offeringId === "COMP7906-B-S2");
+  const existingRequest = activeRequests.find((request) => request.offeringId === "MEBS6003-A-S2");
 
   assert.ok(existingRequest);
 
@@ -323,7 +323,7 @@ test("admin updates can change offering windows and manually resolve requests", 
     { actor: { type: "staff", id: "staff-001" } },
   );
 
-  const refreshedRequests = await getBootstrap();
+  const refreshedRequests = await getBootstrap({ studentId: existingRequest.studentId });
   const resolvedRecord = refreshedRequests.requestRecords.find((record) => record.id === existingRequest.id);
 
   assert.equal(resolvedRecord?.status, "manuallyResolved");
@@ -417,6 +417,140 @@ test("admin ordinary resolution rejects lottery pool requests", async () => {
       { actor: { type: "staff", id: "staff-reject-lottery-001" } },
     ),
     /ordinary staff review queue/i,
+  );
+
+  await assert.rejects(
+    resolveAdminRequest(
+      request.id,
+      { action: "manual-close", note: "Closed without outcome from ordinary staff review." },
+      { actor: { type: "staff", id: "staff-close-lottery-001" } },
+    ),
+    /ordinary staff review queue/i,
+  );
+});
+
+test("admin offering creation rejects unsafe prerequisite and corequisite constraints", async () => {
+  const baseOffering = {
+    courseCode: "COMP7503",
+    semester: 2,
+    subclass: "Z",
+    allocationPolicy: "firstComeFirstServed",
+    capacity: 20,
+    requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+    dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+    schedule: [{ day: "Mon", start: "09:30", end: "12:20", venue: "HYC 201" }],
+    prerequisites: [],
+    corequisites: [],
+  };
+
+  await assert.rejects(
+    createAdminOffering({
+      ...baseOffering,
+      subclass: "Y",
+      prerequisites: ["COMP7503"],
+    }),
+    /itself/i,
+  );
+
+  await assert.rejects(
+    createAdminOffering({
+      ...baseOffering,
+      subclass: "X",
+      prerequisites: ["COMP7506"],
+      corequisites: ["COMP7506"],
+    }),
+    /both a prerequisite and a co-requisite/i,
+  );
+
+  await assert.rejects(
+    createAdminOffering({
+      ...baseOffering,
+      subclass: "W",
+      prerequisites: ["NOPE9999"],
+    }),
+    /course catalog/i,
+  );
+
+  await createAdminCourse({
+    code: "COMP8998",
+    title: "Unscheduled dependency course",
+    faculty: "Faculty of Engineering",
+    department: "Computer Science",
+    listType: "Elective",
+    credits: 6,
+    crossFaculty: false,
+    synopsis: "Created without an offering for validation testing.",
+  });
+
+  await assert.rejects(
+    createAdminOffering({
+      ...baseOffering,
+      subclass: "V",
+      prerequisites: ["COMP8998"],
+    }),
+    /existing offering/i,
+  );
+});
+
+test("admin offering creation rejects prerequisite cycles", async () => {
+  const coursePayloads = [
+    ["COMP8996", "Cycle test foundation"],
+    ["COMP8997", "Cycle test advanced"],
+  ];
+
+  for (const [code, title] of coursePayloads) {
+    await createAdminCourse({
+      code,
+      title,
+      faculty: "Faculty of Engineering",
+      department: "Computer Science",
+      listType: "Elective",
+      credits: 6,
+      crossFaculty: false,
+      synopsis: "Created for prerequisite-cycle validation.",
+    });
+  }
+
+  await createAdminOffering({
+    courseCode: "COMP8996",
+    semester: 2,
+    subclass: "A",
+    allocationPolicy: "firstComeFirstServed",
+    capacity: 20,
+    requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+    dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+    schedule: [{ day: "Tue", start: "09:30", end: "12:20", venue: "HYC 202" }],
+    prerequisites: [],
+    corequisites: [],
+  });
+
+  await createAdminOffering({
+    courseCode: "COMP8997",
+    semester: 2,
+    subclass: "A",
+    allocationPolicy: "firstComeFirstServed",
+    capacity: 20,
+    requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+    dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+    schedule: [{ day: "Wed", start: "09:30", end: "12:20", venue: "HYC 203" }],
+    prerequisites: ["COMP8996"],
+    corequisites: [],
+  });
+
+  await assert.rejects(
+    createAdminOffering({
+      courseCode: "COMP8996",
+      semester: 2,
+      subclass: "B",
+      allocationPolicy: "firstComeFirstServed",
+      capacity: 20,
+      requestWindow: { isOpen: true, closesOn: "2026-01-31" },
+      dropWindow: { isOpen: true, closesOn: "2026-01-31" },
+      schedule: [{ day: "Thu", start: "09:30", end: "12:20", venue: "HYC 204" }],
+      prerequisites: ["COMP8997"],
+      corequisites: [],
+    }),
+    /prerequisite cycle/i,
   );
 });
 

@@ -157,7 +157,8 @@ export function formatWindow(windowValue) {
     return "Not configured";
   }
 
-  return `${windowValue.isOpen ? "Open" : "Closed"} · ${formatIsoDate(windowValue.closesOn)}`;
+  const dateLabel = formatIsoDate(windowValue.closesOn);
+  return windowValue.isOpen ? `Open until ${dateLabel}` : `Closed since ${dateLabel}`;
 }
 
 export function formatStaffTimestamp(value) {
@@ -288,6 +289,14 @@ export function normalizeCourseCode(value) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+export function normalizeCodeList(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(normalizeCourseCode).filter(Boolean))];
+  }
+
+  return [...new Set(String(value ?? "").split(",").map(normalizeCourseCode).filter(Boolean))];
+}
+
 export function normalizeSubclass(value) {
   return String(value ?? "").trim().toUpperCase();
 }
@@ -353,7 +362,14 @@ export function buildRequestPreviewDetail(request, action, previewImpact) {
   }
 
   const summary = previewImpact.summary;
-  return `Status ${formatRequestStatusLabel(summary.statusBefore)} → ${formatRequestStatusLabel(summary.statusAfter)}. Seats ${summary.seatsTakenDelta >= 0 ? "+" : ""}${summary.seatsTakenDelta}; waitlist ${summary.waitlistDelta >= 0 ? "+" : ""}${summary.waitlistDelta}. ${summary.enrollmentCreated ? "A new enrolment will be created." : "No new enrolment will be created."}`;
+  const closureImpact = summary.activeAfter
+    ? "The request remains active."
+    : "The request closes, the office note becomes the student-facing message, and an audit event is written.";
+  const enrolmentImpact = summary.enrollmentCreated
+    ? "A new enrolment will be created and one shared seat is consumed."
+    : "No new enrolment will be created.";
+
+  return `Status ${formatRequestStatusLabel(summary.statusBefore)} → ${formatRequestStatusLabel(summary.statusAfter)}. Seats ${summary.seatsTakenDelta >= 0 ? "+" : ""}${summary.seatsTakenDelta}; waitlist ${summary.waitlistDelta >= 0 ? "+" : ""}${summary.waitlistDelta}. ${closureImpact} ${enrolmentImpact}`;
 }
 
 export function formatResolutionActionLabel(action) {
@@ -388,9 +404,9 @@ export function getRequestWorkflow(request, offering) {
       mode: "lottery",
       label: "Lottery pool",
       description:
-        "This request is waiting in a lottery pool. Do not approve, reject, or waitlist it manually from the ordinary review queue.",
-      allowedActions: ["manual-close"],
-      warning: "Close the request window from Offerings, run allocation, then publish results through the lottery workflow.",
+        "This request is waiting in a lottery pool and is locked from ordinary staff resolution.",
+      allowedActions: [],
+      warning: "Close the request window from Offerings, run the lottery allocation workflow, then publish results. Do not manually close this record here.",
     };
   }
 
@@ -464,7 +480,7 @@ export function buildBatchResolveDetail(action, preview) {
       : action === "waitlist"
         ? "Only policy-eligible review requests will remain active and move into waitlist."
         : action === "manual-close"
-          ? "Close without outcome is available for active exception records, including lottery records that must be closed individually."
+          ? "Close without outcome skips lottery records. Lottery pool records must be processed through the lottery workflow."
           : "Inactive or policy-ineligible requests remain untouched.",
   ].join(" ");
 }

@@ -47,7 +47,7 @@
 
 .portal-table--staff-requests {
   table-layout: fixed;
-  min-width: 980px;
+  min-width: 1120px;
 }
 
 .portal-table--staff-requests th:nth-child(1),
@@ -62,12 +62,12 @@
 
 .portal-table--staff-requests th:nth-child(3),
 .portal-table--staff-requests td:nth-child(3) {
-  width: 7.2rem;
+  width: 12.5rem;
 }
 
 .portal-table--staff-requests th:nth-child(4),
 .portal-table--staff-requests td:nth-child(4) {
-  width: 9.8rem;
+  width: 9.2rem;
 }
 
 .portal-table--staff-requests th:nth-child(5),
@@ -172,6 +172,16 @@
     inset 5px 0 0 #6479b8,
     inset 0 1px 0 rgba(83, 100, 155, 0.16),
     inset 0 -1px 0 rgba(83, 100, 155, 0.16);
+}
+
+.portal-row--staff-viewing,
+.portal-row--staff-viewing td {
+  background:
+    linear-gradient(90deg, rgba(216, 226, 246, 0.5) 0, rgba(255, 255, 255, 0.08) 44%, rgba(245, 247, 252, 0.72) 100%);
+}
+
+.portal-row--staff-viewing td:first-child {
+  box-shadow: inset 4px 0 0 #5f7da6;
 }
 
 .portal-row--jump-target,
@@ -653,6 +663,55 @@
   color: #34577d;
   font-size: 0.76rem;
   line-height: 1.25;
+}
+
+.course-hero-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 620px), 1fr));
+  gap: 0.46rem;
+  align-items: stretch;
+}
+
+.course-hero-grid > .page-panel,
+.course-hero-grid > .notice-panel {
+  min-width: 0;
+  height: 100%;
+}
+
+.course-hero-grid .summary-strip {
+  height: 100%;
+  grid-template-columns: minmax(148px, 0.42fr) minmax(0, 1fr);
+}
+
+.course-hero-grid .summary-strip__metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.course-hero-grid .summary-strip__metric {
+  min-height: 2.55rem;
+}
+
+.course-hero-grid .window-status-strip {
+  height: 100%;
+  grid-template-columns: 1fr;
+  gap: 0.38rem;
+}
+
+.course-hero-grid .window-status-strip__intro {
+  min-height: 0;
+  padding: 0.08rem 0.04rem 0;
+}
+
+.course-hero-grid .window-status-strip__caption {
+  display: none;
+}
+
+.course-hero-grid .window-status-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.course-hero-grid .window-status-item {
+  min-height: 2.72rem;
 }
 
 .notice-panel--window {
