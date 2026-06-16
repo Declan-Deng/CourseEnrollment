@@ -16,6 +16,10 @@ export function badRequest(headline, message = headline, code = "bad_request") {
   return createDomainError(400, headline, message, code);
 }
 
+export function unauthorized(headline, message = headline, code = "unauthorized") {
+  return createDomainError(401, headline, message, code);
+}
+
 export function notFound(headline, message = headline, code = "not_found") {
   return createDomainError(404, headline, message, code);
 }

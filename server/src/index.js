@@ -10,6 +10,7 @@ import {
   deleteAdminOverride,
   dropCourse,
   getBootstrap,
+  getStaffSession,
   getAuditTrail,
   previewAdminOverrideImpact,
   listAdminCourseView,
@@ -20,6 +21,7 @@ import {
   previewAdminRequestResolution,
   getStorageInfo,
   initDataStore,
+  loginStaff,
   previewRequest,
   resetDemo,
   resolveAdminRequest,
@@ -198,6 +200,15 @@ app.delete(
   respondJson((request) => cancelRequest(request.params.courseId, resolveRequestOptions(request))),
 );
 app.post("/api/reset", respondJson((request) => resetDemo(resolveResetOptions(request))));
+
+app.post(
+  "/api/admin/login",
+  respondJson((request) => loginStaff(requireObjectPayload(request.body, "A staff login payload is required."))),
+);
+app.get(
+  "/api/admin/session",
+  respondJson((request) => getStaffSession(resolveRequestOptions(request))),
+);
 
 app.get(
   "/api/admin/courses",

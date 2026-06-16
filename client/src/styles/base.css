@@ -41,7 +41,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -51,9 +52,22 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid rgba(43, 81, 140, 0.72);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 #root {
@@ -273,6 +287,10 @@ select:focus-visible {
   display: grid;
   gap: 0.05rem;
   padding: 0.7rem 0.25rem 0;
+}
+
+.sidebar-nav[hidden] {
+  display: none;
 }
 
 .sidebar-link {

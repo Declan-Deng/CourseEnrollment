@@ -11,11 +11,39 @@ serverHandle.server.unref?.();
 const address = serverHandle.server.address();
 const port = typeof address === "object" && address ? address.port : 4000;
 const baseUrl = `http://127.0.0.1:${port}`;
+const REQUEST_TIMEOUT_MS = 10_000;
 
 async function requestJson(path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}`, options);
-  const body = await response.json();
-  return { response, body };
+  const url = `${baseUrl}${path}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: options.signal ?? controller.signal,
+    });
+    const responseText = await response.text();
+    let body;
+
+    try {
+      body = responseText ? JSON.parse(responseText) : null;
+    } catch (error) {
+      throw new Error(`Expected JSON from ${url}, received: ${responseText.slice(0, 500)}`);
+    }
+
+    if (response.status >= 500) {
+      throw new Error(`HTTP ${response.status} from ${url}: ${responseText.slice(0, 500)}`);
+    }
+
+    return { response, body };
+  } catch (error) {
+    throw new Error(`Request failed for ${options.method ?? "GET"} ${url}: ${error.message}`, {
+      cause: error,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 test.beforeEach(async () => {
@@ -37,6 +65,49 @@ test("health endpoint exposes role-ready storage metadata", async () => {
   assert.equal(body.storage.roleReady, true);
   assert.equal(body.storage.adminApiReady, true);
   assert.equal(body.storage.sharedSupplyMode, "offering-entities");
+  assert.equal(body.storage.staffAuthReady, true);
+});
+
+test("staff login returns an actor that can be verified as a session", async () => {
+  const login = await requestJson("/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "staff-office-001",
+      password: "staff-demo-001",
+    }),
+  });
+
+  assert.equal(login.response.status, 200);
+  assert.equal(login.body.ok, true);
+  assert.equal(login.body.staff.id, "staff-office-001");
+  assert.equal(login.body.staff.displayName, "Programme Office");
+  assert.equal(login.body.staff.passwordHash, undefined);
+
+  const session = await requestJson("/api/admin/session", {
+    headers: {
+      "x-actor-type": "staff",
+      "x-actor-id": login.body.staff.id,
+    },
+  });
+
+  assert.equal(session.response.status, 200);
+  assert.equal(session.body.staff.id, "staff-office-001");
+});
+
+test("staff login rejects invalid credentials", async () => {
+  const login = await requestJson("/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      username: "staff-office-001",
+      password: "wrong-password",
+    }),
+  });
+
+  assert.equal(login.response.status, 401);
+  assert.equal(login.body.ok, false);
+  assert.match(login.body.headline, /staff login failed/i);
 });
 
 test("bootstrap stays backward compatible and includes announcement content", async () => {

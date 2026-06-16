@@ -12,6 +12,7 @@ function buildStateInfo(seed, collections = null) {
     demoMode: true,
     roleReady: true,
     adminApiReady: true,
+    staffAuthReady: true,
     entityRepositoryMode: true,
     sharedCourseSupply: true,
     sharedSupplyMode: "offering-entities",
@@ -70,6 +71,7 @@ class MemoryStateRepository {
     this.programs = clone(seed.programs ?? []);
     this.departments = new Map(seed.departments.map((department) => [department.id, clone(department)]));
     this.courses = new Map(seed.courses.map((course) => [course.id, clone(course)]));
+    this.staffUsers = new Map((seed.staffUsers ?? []).map((staffUser) => [staffUser.id, clone(staffUser)]));
     this.students = new Map();
     this.studentMeta = new Map();
     this.enrollments = new Map();
@@ -98,6 +100,10 @@ class MemoryStateRepository {
         this.courses.set(course.id, clone(course));
         return clone(this.courses.get(course.id));
       },
+    };
+    this.staffUserRepository = {
+      list: async () => sortById([...this.staffUsers.values()]).map(clone),
+      getById: async (staffId) => clone(this.staffUsers.get(staffId) ?? null),
     };
     this.offeringRepository = {
       list: async () => sortById([...this.offerings.values()]).map(clone),
@@ -338,6 +344,7 @@ class MemoryStateRepository {
     this.programs = clone(this.seed.programs ?? []);
     this.departments = new Map(this.seed.departments.map((department) => [department.id, clone(department)]));
     this.courses = new Map(this.seed.courses.map((course) => [course.id, clone(course)]));
+    this.staffUsers = new Map((this.seed.staffUsers ?? []).map((staffUser) => [staffUser.id, clone(staffUser)]));
     this.students = new Map();
     this.studentMeta = new Map();
     this.enrollments = new Map();
@@ -389,6 +396,7 @@ class MongoStateRepository {
       programs: db.collection(`${this.collectionName}_programs`),
       departments: db.collection(`${this.collectionName}_departments`),
       courses: db.collection(`${this.collectionName}_courses`),
+      staffUsers: db.collection(`${this.collectionName}_staff_users`),
       offerings: db.collection(`${this.collectionName}_offerings`),
       rules: db.collection(`${this.collectionName}_rules`),
       students: db.collection(`${this.collectionName}_students`),
@@ -429,6 +437,10 @@ class MongoStateRepository {
         await this.collections.courses.insertOne({ _id: course.id, ...clone(course) });
         return clone(course);
       },
+    };
+    this.staffUserRepository = {
+      list: async () => sortById((await this.collections.staffUsers.find({}).toArray()).map(stripMongoId)),
+      getById: async (staffId) => clone(stripMongoId(await this.collections.staffUsers.findOne({ _id: staffId }))),
     };
     this.offeringRepository = {
       list: async () => sortById((await this.collections.offerings.find({}).toArray()).map(stripMongoId)),
@@ -566,7 +578,22 @@ class MongoStateRepository {
     );
   }
 
+  async ensureStaffUsersSeed() {
+    const existingStaffUser = await this.collections.staffUsers.findOne({});
+
+    if (existingStaffUser) {
+      return;
+    }
+
+    await this.replaceCollection(
+      this.collections.staffUsers,
+      ensureArray(this.seed.staffUsers).map((staffUser) => ({ ...staffUser, _id: staffUser.id })),
+    );
+  }
+
   async ensureRuntimeSeed() {
+    await this.ensureStaffUsersSeed();
+
     for (const studentId of getSeedStudentIds(this.seed)) {
       await this.ensureStudentSeed(studentId);
     }
@@ -802,6 +829,10 @@ class MongoStateRepository {
     await this.replaceCollection(this.collections.programs, this.seed.programs);
     await this.replaceCollection(this.collections.departments, this.seed.departments);
     await this.replaceCollection(this.collections.courses, this.seed.courses);
+    await this.replaceCollection(
+      this.collections.staffUsers,
+      ensureArray(this.seed.staffUsers).map((staffUser) => ({ ...staffUser, _id: staffUser.id })),
+    );
     await this.replaceCollection(this.collections.offerings, this.seed.offerings);
     await this.replaceCollection(this.collections.rules, [this.seed.rules]);
     await this.collections.students.deleteMany({});

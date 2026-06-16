@@ -1,6 +1,7 @@
 import { initialState } from "../data/seed.js";
 import { createAuditEvent } from "./auditService.js";
 import { createRuntimeState } from "./runtimeState.js";
+import { createSeedStaffUsers } from "./staffAuthService.js";
 import { toIsoDate } from "./windowDates.js";
 
 function slugify(value) {
@@ -451,6 +452,7 @@ export const domainSeed = {
   rules: buildProgramRules(runtimeSeed),
   defaultStudentId: runtimeSeed.student.id,
   baseStudent: structuredClone(runtimeSeed.student),
+  staffUsers: createSeedStaffUsers(),
   seedStudentIds,
   seedOverrides: seedStudentIds.flatMap((studentId) => buildSeedOverrides(runtimeSeed, studentId)),
   auditEvents: buildSeedAuditEvents(),

@@ -13,8 +13,11 @@ import { ContactPage } from "./pages/ContactPage";
 import { PasswordPage } from "./pages/PasswordPage";
 import { LogoutPage } from "./pages/LogoutPage";
 import { StaffAdminPage } from "./pages/StaffAdminPage";
+import { StaffLoginPage } from "./pages/StaffLoginPage";
+import { fetchStaffSession } from "./api";
 
 const SIDEBAR_COLLAPSE_QUERY = "(max-width: 920px)";
+const STAFF_SESSION_STORAGE_KEY = "course-enrollment-staff-session";
 const CLOCK_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
@@ -39,6 +42,24 @@ function navigateToSurface(surface) {
   const nextState = { surface };
   window.history.pushState(nextState, "", nextPath);
   window.dispatchEvent(new PopStateEvent("popstate", { state: nextState }));
+}
+
+function readStoredStaffSession() {
+  try {
+    const storedValue = window.localStorage.getItem(STAFF_SESSION_STORAGE_KEY);
+    return storedValue ? JSON.parse(storedValue) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeStaffSession(session) {
+  if (!session) {
+    window.localStorage.removeItem(STAFF_SESSION_STORAGE_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(STAFF_SESSION_STORAGE_KEY, JSON.stringify(session));
 }
 
 function renderPage({
@@ -204,6 +225,19 @@ function StudentPortalApp() {
   const clockLabel = formatClockLabel(clockSource);
   const showQuickDock = activePage === "add";
   const showPageHeader = activePage !== "online";
+  const collapseSidebarIfCompact = () => {
+    if (window.matchMedia(SIDEBAR_COLLAPSE_QUERY).matches) {
+      setSidebarCollapsed(true);
+    }
+  };
+  const handleSidebarNavigation = (pageId) => {
+    handleNavigation(pageId);
+    collapseSidebarIfCompact();
+  };
+  const handleTopNavigation = (item) => {
+    handleTopLinkClick(item);
+    collapseSidebarIfCompact();
+  };
 
   return (
     <div className="portal portal--student">
@@ -230,7 +264,7 @@ function StudentPortalApp() {
                 key={item.id}
                 type="button"
                 className={activePage === item.pageId ? "top-link top-link--active" : "top-link"}
-                onClick={() => handleTopLinkClick(item)}
+                onClick={() => handleTopNavigation(item)}
               >
                 {item.label}
               </button>
@@ -269,7 +303,7 @@ function StudentPortalApp() {
                 ]
                   .filter(Boolean)
                   .join(" ")}
-                onClick={() => handleNavigation(item.id)}
+                onClick={() => handleSidebarNavigation(item.id)}
               >
                 {item.label}
               </button>
@@ -342,6 +376,8 @@ function StudentPortalApp() {
 
 function App() {
   const [surface, setSurface] = useState(() => getSurfaceFromLocation());
+  const [staffSession, setStaffSession] = useState(() => readStoredStaffSession());
+  const [staffSessionChecked, setStaffSessionChecked] = useState(false);
 
   useEffect(() => {
     function handlePopState() {
@@ -352,8 +388,78 @@ function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
+  useEffect(() => {
+    if (surface !== "staff" || !staffSession?.id) {
+      setStaffSessionChecked(true);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setStaffSessionChecked(false);
+
+    fetchStaffSession(staffSession.id)
+      .then((session) => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaffSession(session.staff);
+        storeStaffSession(session.staff);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        setStaffSession(null);
+        storeStaffSession(null);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setStaffSessionChecked(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [staffSession?.id, surface]);
+
+  function handleStaffLogin(session) {
+    setStaffSession(session);
+    storeStaffSession(session);
+    if (getSurfaceFromLocation() !== "staff") {
+      navigateToSurface("staff");
+    }
+  }
+
+  function handleStaffLogout() {
+    setStaffSession(null);
+    storeStaffSession(null);
+  }
+
   if (surface === "staff") {
-    return <StaffAdminPage onReturnToPortal={() => navigateToSurface("student")} />;
+    if (!staffSessionChecked) {
+      return (
+        <div className="portal portal--loading">
+          <div className="page-panel">
+            <h1>Checking staff session...</h1>
+          </div>
+        </div>
+      );
+    }
+
+    if (!staffSession) {
+      return <StaffLoginPage onLogin={handleStaffLogin} />;
+    }
+
+    return (
+      <StaffAdminPage
+        session={staffSession}
+        onStaffLogout={handleStaffLogout}
+        onReturnToPortal={() => navigateToSurface("student")}
+      />
+    );
   }
 
   return <StudentPortalApp />;

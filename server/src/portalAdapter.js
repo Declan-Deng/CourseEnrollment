@@ -22,14 +22,20 @@ function getDemandBand(offering) {
   return "Open availability";
 }
 
+function getCapacityClaimLabel(offering) {
+  return `${offering.seatsTaken} / ${offering.capacity} claimed`;
+}
+
 function getCapacityView(offering) {
   const seatsRemaining = Math.max(offering.capacity - offering.seatsTaken, 0);
   const demandBand = getDemandBand(offering);
+  const capacityLabel = getCapacityClaimLabel(offering);
 
   if (offering.allocationPolicy === "firstComeFirstServed") {
     return {
       primary: `${formatCountLabel(seatsRemaining, "seat")} left`,
       secondary: `${offering.waitlistCount} waiting`,
+      capacityLabel,
     };
   }
 
@@ -37,6 +43,7 @@ function getCapacityView(offering) {
     return {
       primary: demandBand,
       secondary: `Lottery pool · ${offering.seatsTaken}/${offering.capacity} seats claimed before draw`,
+      capacityLabel,
     };
   }
 
@@ -44,12 +51,14 @@ function getCapacityView(offering) {
     return {
       primary: demandBand,
       secondary: "Faculty review queue",
+      capacityLabel,
     };
   }
 
   return {
     primary: "Managed by programme office",
     secondary: "Online changes unavailable",
+    capacityLabel,
   };
 }
 

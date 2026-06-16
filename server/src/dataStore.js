@@ -14,8 +14,9 @@ import {
 } from "./adminOverrideService.js";
 import { listAdminRequests, previewRequestResolution, resolveRequestForAdmin } from "./adminRequestService.js";
 import { buildBootstrapResponse } from "./portalAdapter.js";
-import { badRequest, conflict, notFound } from "./domainErrors.js";
+import { badRequest, conflict, notFound, unauthorized } from "./domainErrors.js";
 import { createStateRepository, RepositoryConflictError } from "./stateRepository.js";
+import { findStaffUserByLogin, sanitizeStaffUser, verifyStaffPassword } from "./staffAuthService.js";
 import {
   cancelStudentRequest,
   dropStudentEnrollment,
@@ -199,6 +200,52 @@ export async function getStorageInfo() {
   return {
     ...activeRepository.getInfo(),
     compatibilityMode: "student-portal-adapter",
+  };
+}
+
+export async function loginStaff(payload = {}) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw badRequest("Invalid login payload.", "A username and password are required.");
+  }
+
+  const username = typeof payload.username === "string" ? payload.username.trim() : "";
+  const password = typeof payload.password === "string" ? payload.password : "";
+
+  if (!username || !password) {
+    throw unauthorized("Staff login failed.", "Enter a valid staff account and password.");
+  }
+
+  const activeRepository = await getRepository();
+  const staffUsers = await activeRepository.staffUserRepository.list();
+  const staffUser = findStaffUserByLogin(staffUsers, username);
+
+  if (!staffUser || !verifyStaffPassword(staffUser, password)) {
+    throw unauthorized("Staff login failed.", "The staff account or password is incorrect.");
+  }
+
+  return {
+    ok: true,
+    staff: sanitizeStaffUser(staffUser),
+  };
+}
+
+export async function getStaffSession(options = {}) {
+  const actor = resolveActor(options, null);
+
+  if (actor?.type !== "staff" || !actor.id) {
+    throw unauthorized("Staff session required.", "Please sign in with a staff account.");
+  }
+
+  const activeRepository = await getRepository();
+  const staffUser = await activeRepository.staffUserRepository.getById(actor.id);
+
+  if (!staffUser?.active) {
+    throw unauthorized("Staff session expired.", "Please sign in again with an active staff account.");
+  }
+
+  return {
+    ok: true,
+    staff: sanitizeStaffUser(staffUser),
   };
 }
 

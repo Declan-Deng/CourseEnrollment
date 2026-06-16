@@ -10,6 +10,7 @@ const ALLOWED_PATCH_KEYS = new Set([
   "allocationPolicy",
   "requestWindow",
   "dropWindow",
+  "schedule",
 ]);
 const ALLOWED_POLICIES = new Set([
   "firstComeFirstServed",
@@ -280,6 +281,15 @@ function validateOfferingCreatePayload(snapshot, payload) {
   }
 }
 
+function normalizeSchedule(schedule) {
+  return schedule.map((slot) => ({
+    day: slot.day,
+    start: slot.start,
+    end: slot.end,
+    venue: normalizePlainText(slot.venue),
+  }));
+}
+
 function normalizeOfferingPayload(snapshot, payload) {
   const courseCode = normalizeCourseCode(payload.courseCode);
   const subclass = normalizeSubclass(payload.subclass);
@@ -297,12 +307,7 @@ function normalizeOfferingPayload(snapshot, payload) {
     capacity: payload.capacity,
     seatsTaken: 0,
     waitlistCount: 0,
-    schedule: payload.schedule.map((slot) => ({
-      day: slot.day,
-      start: slot.start,
-      end: slot.end,
-      venue: normalizePlainText(slot.venue),
-    })),
+    schedule: normalizeSchedule(payload.schedule),
     prerequisites: normalizeCodeList(payload.prerequisites),
     corequisites: normalizeCodeList(payload.corequisites),
     version: 1,
@@ -350,6 +355,10 @@ function validateOfferingPatch(patch) {
   if (patch.allocationPolicy !== undefined && !ALLOWED_POLICIES.has(patch.allocationPolicy)) {
     throw badRequest("Invalid offering patch.", `Unsupported allocation policy: ${patch.allocationPolicy}`);
   }
+
+  if (patch.schedule !== undefined) {
+    validateSchedule(patch.schedule);
+  }
 }
 
 function normalizeWindowPatch(windowPatch) {
@@ -366,6 +375,7 @@ function normalizeWindowPatch(windowPatch) {
 function normalizeOfferingPatch(patch) {
   return {
     ...patch,
+    ...(patch.schedule !== undefined ? { schedule: normalizeSchedule(patch.schedule) } : {}),
     ...(patch.requestWindow !== undefined ? { requestWindow: normalizeWindowPatch(patch.requestWindow) } : {}),
     ...(patch.dropWindow !== undefined ? { dropWindow: normalizeWindowPatch(patch.dropWindow) } : {}),
   };
@@ -531,6 +541,9 @@ export function updateOfferingForAdmin(snapshot, offeringId, patch, actor = { ty
   }
   if (normalizedPatch.allocationPolicy) {
     offering.allocationPolicy = normalizedPatch.allocationPolicy;
+  }
+  if (normalizedPatch.schedule !== undefined) {
+    offering.schedule = normalizedPatch.schedule;
   }
   if (normalizedPatch.waitlistCount !== undefined) {
     offering.waitlistCount = normalizedPatch.waitlistCount;

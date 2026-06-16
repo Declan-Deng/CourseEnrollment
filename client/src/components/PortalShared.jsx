@@ -1,3 +1,5 @@
+import { Children, cloneElement, isValidElement } from "react";
+
 function resolveWindowSummary(summary, semester) {
   const windowSummary = summary?.windowSummary ?? {};
 
@@ -184,10 +186,39 @@ export function StatusText({ tone, children }) {
   return <span className={`status-text status-text--${tone}`}>{children}</span>;
 }
 
+function addMobileCellLabels(children, headers) {
+  return Children.map(children, (row) => {
+    if (!isValidElement(row) || row.type !== "tr") {
+      return row;
+    }
+
+    let headerIndex = 0;
+    const labelledCells = Children.map(row.props.children, (cell) => {
+      if (!isValidElement(cell) || cell.type !== "td") {
+        return cell;
+      }
+
+      const colSpan = Number(cell.props.colSpan ?? 1);
+      const mobileLabel = colSpan === 1 ? headers[headerIndex] : undefined;
+      headerIndex += colSpan;
+
+      if (!mobileLabel || cell.props["data-mobile-label"]) {
+        return cell;
+      }
+
+      return cloneElement(cell, {
+        "data-mobile-label": mobileLabel,
+      });
+    });
+
+    return cloneElement(row, row.props, labelledCells);
+  });
+}
+
 function TableFrame({ headers, children, caption, ariaLabel }) {
   return (
     <div className="table-wrap">
-      <table className="portal-table" aria-label={ariaLabel ?? caption ?? undefined}>
+      <table className="portal-table portal-table--responsive-cards" aria-label={ariaLabel ?? caption ?? undefined}>
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>
@@ -198,7 +229,7 @@ function TableFrame({ headers, children, caption, ariaLabel }) {
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody>{addMobileCellLabels(children, headers)}</tbody>
       </table>
     </div>
   );

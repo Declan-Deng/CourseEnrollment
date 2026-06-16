@@ -81,6 +81,11 @@ export function Banner({ tone, title, detail, onClose }) {
 }
 
 export function ToastNotice({ tone, title, detail, onClose }) {
+  useEffect(() => {
+    const timer = window.setTimeout(onClose, 9000);
+    return () => window.clearTimeout(timer);
+  }, [detail, onClose, title, tone]);
+
   return (
     <div className="toast-notice-wrap" aria-live="polite" aria-atomic="true">
       <div className={`toast-notice toast-notice--${tone}`}>

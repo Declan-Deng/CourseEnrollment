@@ -13,11 +13,12 @@ import {
   previewAdminOfferingImpact,
   previewAdminRequestResolution,
   previewAdminOverrideImpact,
+  previewDecision,
   resetDemo,
   resolveAdminRequest,
   updateAdminOffering,
 } from "../api";
-import { Banner, ConfirmDialog } from "../components/PortalFeedback";
+import { Banner, ConfirmDialog, ToastNotice } from "../components/PortalFeedback";
 import {
   buildBatchResolveDetail,
   buildDefaultCourseForm,
@@ -32,10 +33,12 @@ import {
   buildRequestPreviewDetail,
   formatCompactId,
   formatDecisionTone,
+  formatProgrammeShortName,
   formatAuditActionLabel,
   formatAuditActorLabel,
   formatAuditTargetLabel,
   formatPolicyLabel,
+  formatRequestListId,
   formatRequestStatusLabel,
   formatResolutionActionLabel,
   formatSeatCount,
@@ -43,6 +46,7 @@ import {
   formatSeatOccupantTimestamp,
   formatStaffTimestamp,
   formatWindow,
+  getSuggestedOverrideConstraintIds,
   getRequestWorkflow,
   hasOverrideImpactChange,
   includesText,
@@ -53,6 +57,7 @@ import {
   parseNonNegativeInteger,
   RESOLUTION_ACTION_OPTIONS,
   STAFF_DAY_OPTIONS,
+  STAFF_FACULTY_OPTIONS,
   STAFF_LIST_TYPE_OPTIONS,
   STAFF_POLICY_OPTIONS,
   REQUEST_STATUS_OPTIONS,
@@ -87,12 +92,253 @@ const RESOLUTION_PAST_TENSE = {
   "manual-close": "closed without outcome",
 };
 
+const AUDIT_SORT_OPTIONS = [
+  ["timestamp", "Timestamp"],
+  ["actor", "Actor"],
+  ["action", "Action"],
+  ["target", "Target"],
+  ["summary", "Summary"],
+];
+
 function formatRequestCount(count) {
   return count === 1 ? "1 request" : `${count} requests`;
 }
 
 function formatResolutionPastTense(action) {
   return RESOLUTION_PAST_TENSE[action] ?? formatResolutionActionLabel(action).toLowerCase();
+}
+
+function getAuditTimestampValue(event) {
+  const parsed = Date.parse(String(event.timestamp ?? "").replace(" ", "T"));
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function getAuditSearchText(event) {
+  return [
+    event.id,
+    event.actorType,
+    event.actorId,
+    event.action,
+    formatAuditActionLabel(event.action),
+    event.targetType,
+    event.targetId,
+    event.subjectStudentId,
+    formatAuditActorLabel(event),
+    formatAuditTargetLabel(event),
+    buildAuditEventSummary(event),
+    buildAuditEventChange(event),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getAuditSortValue(event, sortKey) {
+  if (sortKey === "timestamp") {
+    return getAuditTimestampValue(event);
+  }
+
+  if (sortKey === "actor") {
+    return formatAuditActorLabel(event);
+  }
+
+  if (sortKey === "action") {
+    return formatAuditActionLabel(event.action);
+  }
+
+  if (sortKey === "target") {
+    return formatAuditTargetLabel(event);
+  }
+
+  return buildAuditEventSummary(event);
+}
+
+function compareAuditEvents(left, right, sortKey, sortDirection) {
+  const direction = sortDirection === "asc" ? 1 : -1;
+  const leftValue = getAuditSortValue(left, sortKey);
+  const rightValue = getAuditSortValue(right, sortKey);
+
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    return (leftValue - rightValue) * direction;
+  }
+
+  const result = String(leftValue).localeCompare(String(rightValue), undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+
+  if (result !== 0) {
+    return result * direction;
+  }
+
+  return (getAuditTimestampValue(left) - getAuditTimestampValue(right)) * -1;
+}
+
+function isAuditColumnControlActive(columnId, controls) {
+  if (controls.auditSortKey === columnId) {
+    return true;
+  }
+
+  if (columnId === "actor") {
+    return controls.auditActorFilter !== "all" || Boolean(controls.auditActorIdFilter.trim());
+  }
+
+  if (columnId === "action") {
+    return Boolean(controls.auditActionFilter);
+  }
+
+  if (columnId === "target") {
+    return controls.auditTargetTypeFilter !== "all" || Boolean(controls.auditTargetFilter.trim());
+  }
+
+  if (columnId === "summary") {
+    return Boolean(controls.auditSearchFilter.trim());
+  }
+
+  return false;
+}
+
+function AuditColumnHeaderControl({
+  label,
+  columnId,
+  controls,
+  menuOpen,
+  onToggleMenu,
+  onClose,
+  onReset,
+  onChange,
+  menuAlign = "right",
+  actionOptions,
+  targetTypeOptions,
+}) {
+  const active = isAuditColumnControlActive(columnId, controls);
+  const sorted = controls.auditSortKey === columnId;
+
+  function renderColumnFields() {
+    if (columnId === "actor") {
+      return (
+        <>
+          <label className="column-menu__field">
+            <span>Actor type</span>
+            <select value={controls.auditActorFilter} onChange={(event) => onChange("auditActorFilter", event.target.value)}>
+              <option value="all">All</option>
+              <option value="student">Student</option>
+              <option value="staff">Staff</option>
+              <option value="system">System</option>
+            </select>
+          </label>
+          <label className="column-menu__field">
+            <span>Actor ID</span>
+            <input value={controls.auditActorIdFilter} onChange={(event) => onChange("auditActorIdFilter", event.target.value)} />
+          </label>
+        </>
+      );
+    }
+
+    if (columnId === "action") {
+      return (
+        <label className="column-menu__field">
+          <span>Action</span>
+          <select value={controls.auditActionFilter} onChange={(event) => onChange("auditActionFilter", event.target.value)}>
+            <option value="">All</option>
+            {actionOptions.map((action) => (
+              <option key={action} value={action}>
+                {formatAuditActionLabel(action)}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (columnId === "target") {
+      return (
+        <>
+          <label className="column-menu__field">
+            <span>Target type</span>
+            <select value={controls.auditTargetTypeFilter} onChange={(event) => onChange("auditTargetTypeFilter", event.target.value)}>
+              <option value="all">All</option>
+              {targetTypeOptions.map((targetType) => (
+                <option key={targetType} value={targetType}>
+                  {targetType === "constraintOverride" ? "Override" : targetType === "request" ? "Request" : targetType === "offering" ? "Offering" : targetType}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="column-menu__field">
+            <span>Target / student</span>
+            <input value={controls.auditTargetFilter} onChange={(event) => onChange("auditTargetFilter", event.target.value)} />
+          </label>
+        </>
+      );
+    }
+
+    if (columnId === "summary") {
+      return (
+        <label className="column-menu__field">
+          <span>Search summary</span>
+          <input value={controls.auditSearchFilter} onChange={(event) => onChange("auditSearchFilter", event.target.value)} />
+        </label>
+      );
+    }
+
+    return null;
+  }
+
+  return (
+    <div className="column-control">
+      <div className="column-control__label-row">
+        <span>{label}</span>
+        <button
+          type="button"
+          className={active ? "column-control__button column-control__button--active" : "column-control__button"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleMenu();
+          }}
+          aria-expanded={menuOpen}
+          aria-label={`${label} sort and filter`}
+        >
+          ▾
+        </button>
+      </div>
+      {menuOpen ? (
+        <div
+          className={menuAlign === "left" ? "column-menu column-menu--align-left" : "column-menu"}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <label className="column-menu__field">
+            <span>Sort</span>
+            <select
+              value={sorted ? controls.auditSortDirection : "none"}
+              onChange={(event) => {
+                if (event.target.value === "none") {
+                  onChange("auditSortKey", "timestamp");
+                  onChange("auditSortDirection", "desc");
+                  return;
+                }
+
+                onChange("auditSortKey", columnId);
+                onChange("auditSortDirection", event.target.value);
+              }}
+            >
+              <option value="none">No sort</option>
+              <option value="asc">Ascending</option>
+              <option value="desc">Descending</option>
+            </select>
+          </label>
+          {renderColumnFields()}
+          <div className="column-menu__actions">
+            <button type="button" className="mini-button" onClick={onReset}>
+              Reset
+            </button>
+            <button type="button" className="mini-button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function readIsoDateParts(value) {
@@ -142,10 +388,11 @@ function StaffDateField({ value, onChange, label }) {
   );
 }
 
-export function StaffAdminPage({ onReturnToPortal }) {
+export function StaffAdminPage({ session, onStaffLogout, onReturnToPortal }) {
   const [activeTab, setActiveTab] = useState("offerings");
   const [dangerExpanded, setDangerExpanded] = useState(false);
-  const [actorId, setActorId] = useState(DEFAULT_STAFF_ACTOR_ID);
+  const [offeringSetupMode, setOfferingSetupMode] = useState("course");
+  const [actorId, setActorId] = useState(session?.id ?? DEFAULT_STAFF_ACTOR_ID);
   const [courses, setCourses] = useState([]);
   const [offerings, setOfferings] = useState([]);
   const [requests, setRequests] = useState([]);
@@ -169,6 +416,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const [overrideSearch, setOverrideSearch] = useState("");
   const [overrideActiveFilter, setOverrideActiveFilter] = useState("active");
   const [selectedOverrideId, setSelectedOverrideId] = useState("");
+  const [overrideCurrentDecision, setOverrideCurrentDecision] = useState(null);
+  const [overrideCurrentDecisionBusy, setOverrideCurrentDecisionBusy] = useState(false);
+  const [overrideOfferingCandidates, setOverrideOfferingCandidates] = useState([]);
+  const [overrideOfferingCandidatesBusy, setOverrideOfferingCandidatesBusy] = useState(false);
   const [overrideImpact, setOverrideImpact] = useState(null);
   const [overridePreviewBusy, setOverridePreviewBusy] = useState(false);
   const [offeringImpact, setOfferingImpact] = useState(null);
@@ -179,18 +430,29 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const [requestPreviewAction, setRequestPreviewAction] = useState("approve");
   const [requestPreviewImpact, setRequestPreviewImpact] = useState(null);
   const [requestPreviewBusy, setRequestPreviewBusy] = useState(false);
+  const [auditSearchFilter, setAuditSearchFilter] = useState("");
   const [auditActionFilter, setAuditActionFilter] = useState("");
   const [auditActorFilter, setAuditActorFilter] = useState("all");
   const [auditTargetTypeFilter, setAuditTargetTypeFilter] = useState("all");
   const [auditActorIdFilter, setAuditActorIdFilter] = useState("");
   const [auditTargetFilter, setAuditTargetFilter] = useState("");
+  const [auditSortKey, setAuditSortKey] = useState("timestamp");
+  const [auditSortDirection, setAuditSortDirection] = useState("desc");
+  const [openAuditColumnMenu, setOpenAuditColumnMenu] = useState("");
   const [selectedAuditId, setSelectedAuditId] = useState("");
   const [activeOnly, setActiveOnly] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [lastLoadedAt, setLastLoadedAt] = useState(null);
   const [banner, setBanner] = useState(null);
+  const [toast, setToast] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
+
+  useEffect(() => {
+    if (session?.id && session.id !== actorId) {
+      setActorId(session.id);
+    }
+  }, [actorId, session?.id]);
 
   async function loadAll(nextActorId = actorId, preferredSelections = {}) {
     const [nextCourses, nextOfferings, nextRequests, nextOverrides, nextAuditEvents] = await Promise.all([
@@ -341,6 +603,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
         }),
     [offeringAvailabilityFilter, offeringPolicyFilter, offeringSearch, offeringSortKey, offeringWindowFilter, offerings],
   );
+  const offeringFiltersActive =
+    Boolean(offeringSearch.trim()) ||
+    offeringPolicyFilter !== "all" ||
+    offeringWindowFilter !== "all" ||
+    offeringAvailabilityFilter !== "all" ||
+    offeringSortKey !== "courseCode";
+  const selectedOfferingHiddenByFilters = Boolean(
+    selectedOffering && !visibleOfferings.some((offering) => offering.id === selectedOffering.id),
+  );
   const visibleRequests = useMemo(
     () =>
       requests.filter((item) => {
@@ -376,6 +647,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
   const allowedRequestActions = selectedRequestWorkflow.allowedActions;
   const requestResolutionNoteText = requestResolutionNote.trim();
   const requestResolutionNoteValid = requestResolutionNoteText.length >= 12;
+  const requestResolutionNoteProgress = Math.min(requestResolutionNoteText.length, 12);
   const selectedRequestActionAllowed =
     Boolean(requestPreviewAction) && allowedRequestActions.includes(requestPreviewAction);
   const visibleSeatOccupants = useMemo(() => {
@@ -427,9 +699,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
       return { valid: false, detail: "Capacity cannot be lower than the current seats taken count." };
     }
 
+    if (!offeringForm.scheduleDay || !offeringForm.scheduleStart || !offeringForm.scheduleEnd) {
+      return { valid: false, detail: "A teaching day, start time, and end time are required." };
+    }
+
     return { valid: true, detail: "" };
   }, [offeringForm, selectedOffering]);
   const requestResolutionDisabled = !selectedRequest?.active || !selectedRequestActionAllowed || !requestResolutionNoteValid;
+  const requestResolutionLockLabel = !selectedRequest?.active
+    ? "Locked · inactive request"
+    : !requestResolutionNoteValid
+      ? `Locked · note ${requestResolutionNoteProgress}/12`
+      : !selectedRequestActionAllowed
+        ? "Locked · action not allowed"
+        : `Ready · note ${requestResolutionNoteProgress}/12`;
   const visibleOverrides = useMemo(
     () =>
       overrides.filter((override) => {
@@ -461,9 +744,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
     [overrideActiveFilter, overrideSearch, overrides],
   );
   const selectedOverride = visibleOverrides.find((item) => item.id === selectedOverrideId) ?? null;
+  const overrideOfferingCandidateById = useMemo(
+    () => new Map(overrideOfferingCandidates.map((candidate) => [candidate.offering.id, candidate])),
+    [overrideOfferingCandidates],
+  );
   const visibleAuditEvents = useMemo(
-    () =>
-      auditEvents.filter((item) => {
+    () => {
+      const filtered = auditEvents.filter((item) => {
         if (auditActorFilter !== "all" && item.actorType !== auditActorFilter) {
           return false;
         }
@@ -487,9 +774,26 @@ export function StaffAdminPage({ onReturnToPortal }) {
           }
         }
 
+        if (auditSearchFilter && !includesText(getAuditSearchText(item), auditSearchFilter)) {
+          return false;
+        }
+
         return true;
-      }),
-    [auditActionFilter, auditActorFilter, auditActorIdFilter, auditEvents, auditTargetFilter, auditTargetTypeFilter],
+      });
+
+      return [...filtered].sort((left, right) => compareAuditEvents(left, right, auditSortKey, auditSortDirection));
+    },
+    [
+      auditActionFilter,
+      auditActorFilter,
+      auditActorIdFilter,
+      auditEvents,
+      auditSearchFilter,
+      auditSortDirection,
+      auditSortKey,
+      auditTargetFilter,
+      auditTargetTypeFilter,
+    ],
   );
   const selectedAuditEvent = visibleAuditEvents.find((item) => item.id === selectedAuditId) ?? null;
   const selectedAuditBeforeRows = useMemo(
@@ -518,6 +822,38 @@ export function StaffAdminPage({ onReturnToPortal }) {
     () => [...new Set(auditEvents.map((item) => item.targetType))].sort((left, right) => left.localeCompare(right)),
     [auditEvents],
   );
+  const auditControls = useMemo(
+    () => ({
+      auditSearchFilter,
+      auditActionFilter,
+      auditActorFilter,
+      auditActorIdFilter,
+      auditTargetTypeFilter,
+      auditTargetFilter,
+      auditSortKey,
+      auditSortDirection,
+    }),
+    [
+      auditActionFilter,
+      auditActorFilter,
+      auditActorIdFilter,
+      auditSearchFilter,
+      auditSortDirection,
+      auditSortKey,
+      auditTargetFilter,
+      auditTargetTypeFilter,
+    ],
+  );
+  const auditSortLabel = AUDIT_SORT_OPTIONS.find(([value]) => value === auditSortKey)?.[1] ?? "Timestamp";
+  const auditFiltersActive =
+    Boolean(auditSearchFilter.trim()) ||
+    Boolean(auditActionFilter) ||
+    auditActorFilter !== "all" ||
+    Boolean(auditActorIdFilter.trim()) ||
+    auditTargetTypeFilter !== "all" ||
+    Boolean(auditTargetFilter.trim()) ||
+    auditSortKey !== "timestamp" ||
+    auditSortDirection !== "desc";
   const courseCodeOptions = useMemo(
     () => [...courses].sort((left, right) => left.code.localeCompare(right.code)),
     [courses],
@@ -583,6 +919,32 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
     return { valid: true, detail: "" };
   }, [overrideForm.constraintTypes.length, overrideForm.offeringId, overrideForm.studentId]);
+  const overrideCurrentDecisionForDisplay = overrideImpact?.currentDecision ?? (overrideCurrentDecision?.error ? null : overrideCurrentDecision);
+  const suggestedOverrideConstraintIds = useMemo(
+    () => getSuggestedOverrideConstraintIds(overrideCurrentDecisionForDisplay),
+    [overrideCurrentDecisionForDisplay],
+  );
+  const overrideOfferingSelectDisabled =
+    !overrideForm.studentId.trim() || overrideOfferingCandidatesBusy || !overrideOfferingCandidates.length;
+  const overrideOfferingSelectLabel = overrideOfferingCandidatesBusy
+    ? "Checking current blockers"
+    : overrideOfferingCandidates.length
+      ? "Select a blocked offering"
+      : overrideForm.studentId.trim()
+        ? "No current blockers"
+        : "Enter a student first";
+  const overrideHasNoDecisionChange = Boolean(
+    overrideImpact?.currentDecision &&
+      overrideImpact?.overrideDecision &&
+      !hasOverrideImpactChange(overrideImpact),
+  );
+  const overrideCreateDisabled = Boolean(
+    !overrideValidation.valid ||
+      busyKey === "override:create" ||
+      overridePreviewBusy ||
+      overrideImpact?.error ||
+      overrideHasNoDecisionChange,
+  );
   const offeringCreateValidation = useMemo(() => {
     const courseCode = normalizeCourseCode(offeringCreateForm.courseCode);
     const capacity = parseNonNegativeInteger(offeringCreateForm.capacity);
@@ -654,16 +1016,17 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
   useEffect(() => {
     setSelectedOfferingId((current) => {
-      if (!visibleOfferings.length) {
+      if (!offerings.length) {
         setOfferingForm(null);
         return "";
       }
 
-      const nextOffering = visibleOfferings.find((item) => item.id === current) ?? visibleOfferings[0];
+      const currentOffering = offerings.find((item) => item.id === current);
+      const nextOffering = visibleOfferings.find((item) => item.id === current) ?? currentOffering ?? visibleOfferings[0] ?? offerings[0];
       setOfferingForm(buildOfferingForm(nextOffering));
       return nextOffering.id;
     });
-  }, [visibleOfferings]);
+  }, [offerings, visibleOfferings]);
 
   useEffect(() => {
     setSelectedRequestId((current) => {
@@ -716,9 +1079,128 @@ export function StaffAdminPage({ onReturnToPortal }) {
         : {
             ...current,
             courseCode: courseCodeOptions[0].code,
-          },
+      },
     );
   }, [courseCodeOptions]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const studentId = overrideForm.studentId.trim();
+
+    if (!studentId || studentId.length < 6 || !offerings.length) {
+      setOverrideOfferingCandidates([]);
+      setOverrideOfferingCandidatesBusy(false);
+      setOverrideForm((current) =>
+        current.offeringId || current.constraintTypes.length
+          ? { ...current, offeringId: "", constraintTypes: [] }
+          : current,
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setOverrideOfferingCandidatesBusy(true);
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const results = await Promise.allSettled(
+          offerings.map(async (offering) => {
+            const decision = await previewDecision(offering.id, { studentId });
+            const suggestedConstraintIds = getSuggestedOverrideConstraintIds(decision);
+
+            if (!suggestedConstraintIds.length) {
+              return null;
+            }
+
+            return {
+              offering,
+              decision,
+              suggestedConstraintIds,
+            };
+          }),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const candidates = results
+          .filter((result) => result.status === "fulfilled" && result.value)
+          .map((result) => result.value)
+          .sort((left, right) => left.offering.id.localeCompare(right.offering.id));
+
+        setOverrideOfferingCandidates(candidates);
+        setOverrideForm((current) => {
+          if (!current.offeringId || candidates.some((candidate) => candidate.offering.id === current.offeringId)) {
+            return current;
+          }
+
+          return {
+            ...current,
+            offeringId: "",
+            constraintTypes: [],
+          };
+        });
+      } catch {
+        if (!cancelled) {
+          setOverrideOfferingCandidates([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setOverrideOfferingCandidatesBusy(false);
+        }
+      }
+    }, 180);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [offerings, overrideForm.studentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCurrentOverrideDecision() {
+      const studentId = overrideForm.studentId.trim();
+
+      if (!studentId || !overrideForm.offeringId) {
+        setOverrideCurrentDecision(null);
+        setOverrideCurrentDecisionBusy(false);
+        return;
+      }
+
+      setOverrideCurrentDecisionBusy(true);
+
+      try {
+        const decision = await previewDecision(overrideForm.offeringId, { studentId });
+
+        if (!cancelled) {
+          setOverrideCurrentDecision(decision);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOverrideCurrentDecision({
+            error: {
+              headline: toErrorHeadline(error, "Current rule check unavailable."),
+              detail: toFriendlyError(error),
+            },
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setOverrideCurrentDecisionBusy(false);
+        }
+      }
+    }
+
+    loadCurrentOverrideDecision();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [overrideForm.offeringId, overrideForm.studentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -889,6 +1371,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setBanner({ tone, title, detail });
   }
 
+  function showToast(tone, title, detail) {
+    setToast({ id: `${Date.now()}-${title}`, tone, title, detail });
+  }
+
+  function closeToast() {
+    setToast(null);
+  }
+
   function getSelectableRowClass(isSelected, selectedMode = "selected") {
     const selectedClass = selectedMode === "viewing" ? "portal-row--staff-viewing" : "portal-row--selected portal-row--staff-selected";
 
@@ -910,6 +1400,92 @@ export function StaffAdminPage({ onReturnToPortal }) {
     setOfferingImpactDetail("");
     setOfferingSeatSearch("");
     setOfferingSeatSortKey("timeDesc");
+    setOfferingSetupMode("management");
+  }
+
+  function clearOfferingFilters() {
+    setOfferingSearch("");
+    setOfferingPolicyFilter("all");
+    setOfferingWindowFilter("all");
+    setOfferingAvailabilityFilter("all");
+    setOfferingSortKey("courseCode");
+  }
+
+  function updateAuditControl(field, value) {
+    const setters = {
+      auditSearchFilter: setAuditSearchFilter,
+      auditActionFilter: setAuditActionFilter,
+      auditActorFilter: setAuditActorFilter,
+      auditActorIdFilter: setAuditActorIdFilter,
+      auditTargetTypeFilter: setAuditTargetTypeFilter,
+      auditTargetFilter: setAuditTargetFilter,
+      auditSortKey: setAuditSortKey,
+      auditSortDirection: setAuditSortDirection,
+    };
+
+    setters[field]?.(value);
+  }
+
+  function clearAuditFilters() {
+    setAuditSearchFilter("");
+    setAuditActionFilter("");
+    setAuditActorFilter("all");
+    setAuditActorIdFilter("");
+    setAuditTargetTypeFilter("all");
+    setAuditTargetFilter("");
+    setAuditSortKey("timestamp");
+    setAuditSortDirection("desc");
+    setOpenAuditColumnMenu("");
+  }
+
+  function resetAuditColumn(columnId) {
+    if (auditSortKey === columnId) {
+      setAuditSortKey("timestamp");
+      setAuditSortDirection("desc");
+    }
+
+    if (columnId === "actor") {
+      setAuditActorFilter("all");
+      setAuditActorIdFilter("");
+    }
+
+    if (columnId === "action") {
+      setAuditActionFilter("");
+    }
+
+    if (columnId === "target") {
+      setAuditTargetTypeFilter("all");
+      setAuditTargetFilter("");
+    }
+
+    if (columnId === "summary") {
+      setAuditSearchFilter("");
+    }
+
+    if (columnId === "timestamp") {
+      setAuditSortKey("timestamp");
+      setAuditSortDirection("desc");
+    }
+
+    setOpenAuditColumnMenu("");
+  }
+
+  function renderAuditColumnHeader(columnId, label) {
+    return (
+      <AuditColumnHeaderControl
+        label={label}
+        columnId={columnId}
+        controls={auditControls}
+        menuOpen={openAuditColumnMenu === columnId}
+        onToggleMenu={() => setOpenAuditColumnMenu((current) => (current === columnId ? "" : columnId))}
+        onClose={() => setOpenAuditColumnMenu("")}
+        onReset={() => resetAuditColumn(columnId)}
+        onChange={updateAuditControl}
+        menuAlign={columnId === "timestamp" || columnId === "actor" ? "left" : "right"}
+        actionOptions={auditActionOptions}
+        targetTypeOptions={auditTargetTypeOptions}
+      />
+    );
   }
 
   function updateCourseForm(field, value) {
@@ -932,6 +1508,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
       constraintTypes: current.constraintTypes.includes(constraintId)
         ? current.constraintTypes.filter((item) => item !== constraintId)
         : [...current.constraintTypes, constraintId],
+    }));
+  }
+
+  function selectOverrideOffering(offeringId) {
+    const candidate = overrideOfferingCandidateById.get(offeringId);
+
+    setOverrideForm((current) => ({
+      ...current,
+      offeringId,
+      constraintTypes: candidate?.suggestedConstraintIds ?? [],
     }));
   }
 
@@ -987,6 +1573,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
         isOpen: offeringForm.dropWindowOpen,
         closesOn: offeringForm.dropWindowClosesOn,
       },
+      schedule: [
+        {
+          day: offeringForm.scheduleDay,
+          start: offeringForm.scheduleStart,
+          end: offeringForm.scheduleEnd,
+          venue: offeringForm.venue.trim(),
+        },
+      ],
     };
 
     await runAction(
@@ -994,6 +1588,8 @@ export function StaffAdminPage({ onReturnToPortal }) {
       () => updateAdminOffering(selectedOffering.id, patch, actorId),
       `Offering ${selectedOffering.courseCode} updated.`,
     );
+    setOfferingSetupMode("management");
+    scrollOfferingsPart("management");
   }
 
   function handleConfirmSaveOffering() {
@@ -1036,7 +1632,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
         ...current,
         courseCode: created.course.code,
       }));
-      showBanner("success", `${created.course.code} created.`, "The new course is now available for offering setup.");
+      setOfferingSetupMode("offering");
+      scrollOfferingsPart("offering");
+      showBanner("success", `${created.course.code} created.`, "Next, create the semester offering for this course.");
     } catch (error) {
       showBanner("error", toErrorHeadline(error), toFriendlyError(error));
     } finally {
@@ -1096,11 +1694,18 @@ export function StaffAdminPage({ onReturnToPortal }) {
       );
       await loadAll(actorId, { offeringId: created.offering.id });
       setSelectedOfferingId(created.offering.id);
+      setOfferingSearch(created.offering.courseCode);
+      setOfferingPolicyFilter("all");
+      setOfferingWindowFilter("all");
+      setOfferingAvailabilityFilter("all");
+      setOfferingSortKey("courseCode");
       setOfferingCreateForm((current) => ({
         ...buildDefaultOfferingCreateForm(current.courseCode),
         courseCode: current.courseCode,
       }));
-      showBanner("success", `${created.offering.id} created.`, "The new offering is ready for review and further edits.");
+      setOfferingSetupMode("management");
+      scrollOfferingsPart("management");
+      showBanner("success", `${created.offering.id} created.`, "The list is filtered to the new offering. Review and edit live settings on the right.");
     } catch (error) {
       showBanner("error", toErrorHeadline(error), toFriendlyError(error));
     } finally {
@@ -1126,7 +1731,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
     }
 
     if (!requestResolutionNoteValid) {
-      showBanner(
+      showToast(
         "error",
         "Resolution note required.",
         "Enter a specific office note of at least 12 characters before resolving a request.",
@@ -1159,15 +1764,26 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }
 
   function handleConfirmResolveRequest(action) {
-    if (!selectedRequest || !isResolutionActionAllowed(selectedRequest, selectedRequestOffering, action)) {
+    if (!selectedRequest) {
+      showToast("error", "No request selected.", "Select one request before running a resolution action.");
+      return;
+    }
+
+    if (!selectedRequest.active) {
+      showToast("error", "Request is already closed.", "Only active requests can be resolved from this panel.");
+      return;
+    }
+
+    if (!isResolutionActionAllowed(selectedRequest, selectedRequestOffering, action)) {
+      showToast("error", "Action blocked by workflow.", "This request type does not support the selected staff action.");
       return;
     }
 
     if (!requestResolutionNoteValid) {
-      showBanner(
+      showToast(
         "error",
         "Resolution note required.",
-        "Enter the student-facing reason and office context before confirming this action.",
+        `Write at least 12 characters before ${formatResolutionActionLabel(action).toLowerCase()}.`,
       );
       return;
     }
@@ -1179,9 +1795,43 @@ export function StaffAdminPage({ onReturnToPortal }) {
     });
   }
 
+  function handleConfirmBatchResolve(action, preview) {
+    if (!preview.eligibleCount && !requestResolutionNoteValid) {
+      showToast("error", "Batch action not ready.", "Select eligible rows and write at least 12 characters in the note.");
+      return;
+    }
+
+    if (!preview.eligibleCount) {
+      showToast("error", "No eligible requests selected.", "Select active rows that support this batch action.");
+      return;
+    }
+
+    if (!requestResolutionNoteValid) {
+      showToast(
+        "error",
+        "Batch note required.",
+        `Write at least 12 characters before ${formatResolutionActionLabel(action).toLowerCase()} for selected requests.`,
+      );
+      return;
+    }
+
+    const titles = {
+      approve: "Approve selected requests?",
+      waitlist: "Waitlist selected requests?",
+      reject: "Reject selected requests?",
+      "manual-close": "Close selected requests without outcome?",
+    };
+
+    setConfirmAction({
+      title: titles[action] ?? `${formatResolutionActionLabel(action)} selected requests?`,
+      detail: buildBatchResolveDetail(action, preview),
+      onConfirm: () => handleBatchResolve(action),
+    });
+  }
+
   async function handleBatchResolve(action) {
     if (!requestResolutionNoteValid) {
-      showBanner(
+      showToast(
         "error",
         "Batch note required.",
         "Enter a specific office note before running a batch action; it will be written to every resolved request.",
@@ -1194,7 +1844,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
     );
 
     if (!resolvable.length) {
-      showBanner(
+      showToast(
         "error",
         "No eligible requests selected.",
         "Select active requests that support this action under their allocation policy.",
@@ -1263,6 +1913,18 @@ export function StaffAdminPage({ onReturnToPortal }) {
       showBanner("error", "Override form is incomplete.", overrideValidation.detail);
       return;
     }
+    if (overridePreviewBusy) {
+      showBanner("warn", "Override impact is still checking.", "Wait for the preview before creating the override.");
+      return;
+    }
+    if (overrideImpact?.error) {
+      showBanner("error", overrideImpact.error.headline, overrideImpact.error.detail);
+      return;
+    }
+    if (overrideHasNoDecisionChange) {
+      showBanner("warn", "No decision change.", buildOverrideImpactNote(overrideImpact));
+      return;
+    }
 
     await runAction(
       "override:create",
@@ -1307,6 +1969,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
       },
       "All records reset.",
     );
+  }
+
+  function scrollOfferingsPart(part) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(`staff-offerings-${part}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function jumpToOfferingsPart(part) {
+    setOfferingSetupMode(part);
+    scrollOfferingsPart(part);
   }
 
   const offeringSummary = useMemo(
@@ -1365,7 +2041,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
   }, [offeringById, selectedVisibleRequests]);
 
   return (
-    <div className="portal">
+    <div className="portal portal--staff">
       <header className="portal-header">
         <div className="portal-brand">
           <img src="/hkulogo.jpg" alt="The University of Hong Kong crest" className="portal-crest-image" />
@@ -1393,10 +2069,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
           ))}
         </div>
         <div className="portal-links__meta staff-toolbar">
-          <label className="staff-toolbar__field">
-            <span>Actor</span>
-            <input value={actorId} onChange={(event) => setActorId(event.target.value)} />
-          </label>
+          <div className="staff-session-chip" aria-label={`Signed in as ${session?.displayName ?? "Staff"}`}>
+            <span>Account</span>
+            <strong>{session?.displayName ?? "Staff"}</strong>
+          </div>
           <div className="staff-toolbar__status" role="status" aria-live="polite">
             {busyKey ? "Syncing staff data…" : formatStaffTimestamp(lastLoadedAt)}
           </div>
@@ -1415,6 +2091,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
           <button type="button" className="portal-reset portal-reset--secondary" onClick={onReturnToPortal}>
             Student Portal
           </button>
+          <button type="button" className="portal-reset portal-reset--secondary" onClick={onStaffLogout}>
+            Sign out
+          </button>
         </div>
       </div>
 
@@ -1424,6 +2103,15 @@ export function StaffAdminPage({ onReturnToPortal }) {
         </div>
 
         {banner ? <Banner tone={banner.tone} title={banner.title} detail={banner.detail} onClose={() => setBanner(null)} /> : null}
+        {toast ? (
+          <ToastNotice
+            key={toast.id}
+            tone={toast.tone}
+            title={toast.title}
+            detail={toast.detail}
+            onClose={closeToast}
+          />
+        ) : null}
 
         {!loading && dangerExpanded ? (
           <section id="staff-danger-zone" className="page-panel page-panel--danger">
@@ -1459,8 +2147,45 @@ export function StaffAdminPage({ onReturnToPortal }) {
 
         {!loading && activeTab === "offerings" ? (
           <>
-          <div className="staff-create-grid">
-            <section className="page-panel">
+          <div className="staff-offerings-workspace">
+          <section className="page-panel staff-workflow-panel">
+            <h3>Offerings workflow</h3>
+            <div className="staff-mode-switch" role="tablist" aria-label="Creation form">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={offeringSetupMode === "course"}
+                className={offeringSetupMode === "course" ? "staff-mode-switch__button staff-mode-switch__button--active" : "staff-mode-switch__button"}
+                onClick={() => jumpToOfferingsPart("course")}
+              >
+                Create course
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={offeringSetupMode === "offering"}
+                className={offeringSetupMode === "offering" ? "staff-mode-switch__button staff-mode-switch__button--active" : "staff-mode-switch__button"}
+                onClick={() => jumpToOfferingsPart("offering")}
+              >
+                Create offering
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={offeringSetupMode === "management"}
+                className={offeringSetupMode === "management" ? "staff-mode-switch__button staff-mode-switch__button--active" : "staff-mode-switch__button"}
+                onClick={() => jumpToOfferingsPart("management")}
+              >
+                Manage existing
+              </button>
+            </div>
+          </section>
+
+          <div className="staff-create-grid staff-create-grid--single">
+            <section
+              id="staff-offerings-course"
+              className={offeringSetupMode === "course" ? "page-panel staff-panel--course" : "page-panel staff-panel--course staff-create-panel--hidden"}
+            >
               <h3>Create new course</h3>
               <div className="staff-mode-banner">
                 <strong>Create mode</strong>
@@ -1477,7 +2202,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </div>
                 <div className="staff-form-row">
                   <label>Faculty</label>
-                  <input value={courseForm.faculty} onChange={(event) => updateCourseForm("faculty", event.target.value)} />
+                  <select value={courseForm.faculty} onChange={(event) => updateCourseForm("faculty", event.target.value)}>
+                    {STAFF_FACULTY_OPTIONS.map((faculty) => (
+                      <option key={faculty} value={faculty}>
+                        {faculty}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div className="staff-form-row">
                   <label>Department</label>
@@ -1532,7 +2263,10 @@ export function StaffAdminPage({ onReturnToPortal }) {
               </div>
             </section>
 
-            <section className="page-panel">
+            <section
+              id="staff-offerings-offering"
+              className={offeringSetupMode === "offering" ? "page-panel staff-panel--offering" : "page-panel staff-panel--offering staff-create-panel--hidden"}
+            >
               <h3>Create new offering</h3>
               <div className="staff-mode-banner">
                 <strong>Create mode</strong>
@@ -1630,9 +2364,23 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </div>
                 <div className="staff-form-row">
                   <label>Start / End</label>
-                  <div className="staff-inline-actions">
-                    <input type="time" value={offeringCreateForm.scheduleStart} onChange={(event) => updateOfferingCreateForm("scheduleStart", event.target.value)} />
-                    <input type="time" value={offeringCreateForm.scheduleEnd} onChange={(event) => updateOfferingCreateForm("scheduleEnd", event.target.value)} />
+                  <div className="staff-time-grid">
+                    <label>
+                      <span>Start</span>
+                      <input
+                        type="time"
+                        value={offeringCreateForm.scheduleStart}
+                        onChange={(event) => updateOfferingCreateForm("scheduleStart", event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>End</span>
+                      <input
+                        type="time"
+                        value={offeringCreateForm.scheduleEnd}
+                        onChange={(event) => updateOfferingCreateForm("scheduleEnd", event.target.value)}
+                      />
+                    </label>
                   </div>
                 </div>
                 <div className="staff-form-row">
@@ -1661,8 +2409,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
               </div>
             </section>
           </div>
-          <div className="staff-grid">
-            <section className="page-panel">
+
+          <div id="staff-offerings-management" className="staff-section-heading">
+            <div>
+              <strong>Manage existing shared offerings</strong>
+              <span>Select one row on the left, then update the live offering settings on the right.</span>
+            </div>
+          </div>
+
+          <div className="staff-grid staff-grid--offerings">
+            <section className="page-panel staff-panel--shared">
               <h3>Shared Offerings</h3>
               <div className="staff-summary-bar">
                 <span>{offeringSummary.total} offerings</span>
@@ -1728,6 +2484,17 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <option value="policy">Policy</option>
                   </select>
                 </label>
+                <div className="staff-toolbar__field staff-toolbar__field--action">
+                  <span>Filters</span>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={clearOfferingFilters}
+                    disabled={!offeringFiltersActive}
+                  >
+                    Clear filters
+                  </button>
+                </div>
               </div>
               <div className="table-wrap">
                 <table className="portal-table portal-table--staff-offerings">
@@ -1756,7 +2523,6 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         <td>
                           <div className="staff-row-title">
                             <strong>{offering.courseCode}</strong>
-                            {offering.id === selectedOfferingId ? <span className="staff-selected-chip">Selected</span> : null}
                           </div>
                           <div>{offering.id}</div>
                         </td>
@@ -1770,7 +2536,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7}>No offerings match the current filters.</td>
+                        <td colSpan={7}>
+                          <div className="staff-empty-state">
+                            <strong>No offerings match the current filters.</strong>
+                            <span>The editor keeps the last available selection so you do not lose context.</span>
+                            <button
+                              type="button"
+                              className="mini-button"
+                              onClick={clearOfferingFilters}
+                              disabled={!offeringFiltersActive}
+                            >
+                              Clear filters
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     )}
                   </tbody>
@@ -1778,7 +2557,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
               </div>
             </section>
 
-            <section className="page-panel page-panel--focus">
+            <section className="page-panel page-panel--focus staff-panel--editor">
               <h3>{selectedOffering ? `Editing existing offering · ${selectedOffering.courseCode}` : "Offering Editor"}</h3>
               {selectedOffering ? (
                 <div className="staff-selection-banner" aria-live="polite">
@@ -1788,6 +2567,14 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     <span className="staff-selection-banner__id">{selectedOffering.id}</span>
                   </div>
                   {selectedOffering.title ? <div className="staff-selection-banner__note">{selectedOffering.title}</div> : null}
+                </div>
+              ) : null}
+              {selectedOfferingHiddenByFilters ? (
+                <div className="staff-filter-note" role="status">
+                  <span>This selected offering is hidden by the current table filters.</span>
+                  <button type="button" className="mini-button" onClick={clearOfferingFilters}>
+                    Clear filters
+                  </button>
                 </div>
               ) : null}
               {selectedOffering && offeringForm ? (
@@ -1886,6 +2673,48 @@ export function StaffAdminPage({ onReturnToPortal }) {
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Teaching Day</label>
+                    <select
+                      value={offeringForm.scheduleDay}
+                      onChange={(event) => setOfferingForm((current) => ({ ...current, scheduleDay: event.target.value }))}
+                    >
+                      {STAFF_DAY_OPTIONS.map((day) => (
+                        <option key={day} value={day}>
+                          {day}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Start / End</label>
+                    <div className="staff-time-grid">
+                      <label>
+                        <span>Start</span>
+                        <input
+                          type="time"
+                          value={offeringForm.scheduleStart}
+                          onChange={(event) => setOfferingForm((current) => ({ ...current, scheduleStart: event.target.value }))}
+                        />
+                      </label>
+                      <label>
+                        <span>End</span>
+                        <input
+                          type="time"
+                          value={offeringForm.scheduleEnd}
+                          onChange={(event) => setOfferingForm((current) => ({ ...current, scheduleEnd: event.target.value }))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Venue</label>
+                    <input
+                      value={offeringForm.venue}
+                      onChange={(event) => setOfferingForm((current) => ({ ...current, venue: event.target.value }))}
+                      placeholder="MWT 1 / Zoom"
+                    />
                   </div>
                   <div className="staff-form-row">
                     <label>Request Window</label>
@@ -2076,12 +2905,13 @@ export function StaffAdminPage({ onReturnToPortal }) {
               )}
             </section>
           </div>
+          </div>
           </>
         ) : null}
 
         {!loading && activeTab === "requests" ? (
           <div className="staff-grid">
-            <section className="page-panel">
+            <section className="page-panel staff-panel--request-list">
               <h3>Requests</h3>
               <div className="staff-summary-bar">
                 <span>{requestSummary.total} total</span>
@@ -2114,81 +2944,82 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <span>Search</span>
                   <input value={requestSearch} onChange={(event) => setRequestSearch(event.target.value)} />
                 </label>
-                <button type="button" className="mini-button" onClick={selectAllVisibleRequests} disabled={!visibleRequests.length}>
-                  Batch-select visible
-                </button>
-                <button
-                  type="button"
-                  className="mini-button mini-button--primary"
-                  onClick={selectActiveVisibleRequests}
-                  disabled={!visibleRequests.some((item) => item.active && getRequestWorkflow(item, offeringById.get(item.offeringId)).allowedActions.length > 0)}
-                >
-                  Batch-select resolvable
-                </button>
-                <button type="button" className="mini-button" onClick={clearSelectedRequests} disabled={!selectedRequestIds.length}>
-                  Clear batch
-                </button>
-                <button
-                  type="button"
-                  className="mini-button mini-button--primary"
-                  onClick={() =>
-                    setConfirmAction({
-                      title: "Approve selected requests?",
-                      detail: buildBatchResolveDetail("approve", requestBatchPreviews.approve),
-                      onConfirm: () => handleBatchResolve("approve"),
-                    })
-                  }
-                  disabled={!requestBatchPreviews.approve.eligibleCount || !requestResolutionNoteValid}
-                >
-                  Batch Approve
-                </button>
-                <button
-                  type="button"
-                  className="mini-button"
-                  onClick={() =>
-                    setConfirmAction({
-                      title: "Waitlist selected requests?",
-                      detail: buildBatchResolveDetail("waitlist", requestBatchPreviews.waitlist),
-                      onConfirm: () => handleBatchResolve("waitlist"),
-                    })
-                  }
-                  disabled={!requestBatchPreviews.waitlist.eligibleCount || !requestResolutionNoteValid}
-                >
-                  Batch Waitlist
-                </button>
-                <button
-                  type="button"
-                  className="mini-button mini-button--danger"
-                  onClick={() =>
-                    setConfirmAction({
-                      title: "Reject selected requests?",
-                      detail: buildBatchResolveDetail("reject", requestBatchPreviews.reject),
-                      onConfirm: () => handleBatchResolve("reject"),
-                    })
-                  }
-                  disabled={!requestBatchPreviews.reject.eligibleCount || !requestResolutionNoteValid}
-                >
-                  Batch Reject
-                </button>
-                <button
-                  type="button"
-                  className="mini-button mini-button--danger"
-                  onClick={() =>
-                    setConfirmAction({
-                      title: "Close selected requests without outcome?",
-                      detail: buildBatchResolveDetail("manual-close", requestBatchPreviews["manual-close"]),
-                      onConfirm: () => handleBatchResolve("manual-close"),
-                    })
-                  }
-                  disabled={!requestBatchPreviews["manual-close"].eligibleCount || !requestResolutionNoteValid}
-                >
-                  Batch Close
-                </button>
+                <div className="staff-toolbar-group staff-toolbar-group--selection">
+                  <span className="staff-toolbar-group__label">Selection</span>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={selectAllVisibleRequests}
+                    disabled={!visibleRequests.length}
+                    title="Select every row currently shown by the filters, including rows that batch actions may later skip."
+                  >
+                    Select shown rows
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button mini-button--primary"
+                    onClick={selectActiveVisibleRequests}
+                    disabled={!visibleRequests.some((item) => item.active && getRequestWorkflow(item, offeringById.get(item.offeringId)).allowedActions.length > 0)}
+                    title="Select only active visible requests that ordinary staff batch actions can resolve."
+                  >
+                    Select action-ready rows
+                  </button>
+                  <button type="button" className="mini-button" onClick={clearSelectedRequests} disabled={!selectedRequestIds.length}>
+                    Clear batch
+                  </button>
+                </div>
+                <div className="staff-toolbar-group staff-toolbar-group--actions">
+                  <span className="staff-toolbar-group__label">Actions</span>
+                  <button
+                    type="button"
+                    className="mini-button mini-button--primary"
+                    onClick={() => handleConfirmBatchResolve("approve", requestBatchPreviews.approve)}
+                  >
+                    Batch Approve
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={() => handleConfirmBatchResolve("waitlist", requestBatchPreviews.waitlist)}
+                  >
+                    Batch Waitlist
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button mini-button--danger"
+                    onClick={() => handleConfirmBatchResolve("reject", requestBatchPreviews.reject)}
+                  >
+                    Batch Reject
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button mini-button--danger"
+                    onClick={() => handleConfirmBatchResolve("manual-close", requestBatchPreviews["manual-close"])}
+                  >
+                    Batch Close
+                  </button>
+                </div>
               </div>
-              <p className="staff-inline-note staff-inline-note--toolbar">
-                Batch actions use the checkboxes only. The highlighted row is just the request currently open in the detail panel.
-                A specific resolution note is required before any batch action is enabled.
-              </p>
+              <div className="staff-batch-readiness" role="status" aria-live="polite">
+                <span className={selectedRequestCount ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill"}>
+                  Selected {selectedRequestCount}
+                </span>
+                <span className={requestResolutionNoteValid ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill staff-batch-readiness__pill--warn"}>
+                  Note {requestResolutionNoteProgress}/12
+                </span>
+                <span className={requestBatchPreviews.approve.eligibleCount ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill"}>
+                  Approve {requestBatchPreviews.approve.eligibleCount}
+                </span>
+                <span className={requestBatchPreviews.waitlist.eligibleCount ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill"}>
+                  Waitlist {requestBatchPreviews.waitlist.eligibleCount}
+                </span>
+                <span className={requestBatchPreviews.reject.eligibleCount ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill"}>
+                  Reject {requestBatchPreviews.reject.eligibleCount}
+                </span>
+                <span className={requestBatchPreviews["manual-close"].eligibleCount ? "staff-batch-readiness__pill staff-batch-readiness__pill--ready" : "staff-batch-readiness__pill"}>
+                  Close {requestBatchPreviews["manual-close"].eligibleCount}
+                </span>
+              </div>
               {selectedRequestCount ? (
                 <div className="staff-impact-grid staff-impact-grid--compact" aria-live="polite">
                   <div className="staff-decision-card staff-decision-card--info">
@@ -2223,6 +3054,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       <th>Request</th>
                       <th>Student</th>
                       <th>Offering</th>
+                      <th>Submitted</th>
                       <th>Workflow</th>
                       <th>Status</th>
                       <th>Message</th>
@@ -2252,21 +3084,22 @@ export function StaffAdminPage({ onReturnToPortal }) {
                             />
                           </td>
                           <td>
-                            <span className="staff-mono-cell" title={request.id}>{formatCompactId(request.id)}</span>
+                            <span className="staff-mono-cell" title={request.id}>{formatRequestListId(request.id)}</span>
                           </td>
                           <td>
                             <div className="staff-student-cell">
                               <strong>{request.student?.name ?? request.studentId}</strong>
-                              <span>{request.studentId}</span>
-                              <span>{request.student?.programme ?? "Programme unavailable"}</span>
-                              {request.student?.email ? <span>{request.student.email}</span> : null}
+                              <span>
+                                {request.studentId} · {formatProgrammeShortName(request.student?.programme)}
+                              </span>
                             </div>
                           </td>
                           <td>{request.offeringId}</td>
+                          <td>{formatStaffDateTime(request.submittedAt)}</td>
                           <td>
                             <div className={`staff-workflow-pill staff-workflow-pill--${workflow.mode}`}>
                               <strong>{workflow.label}</strong>
-                              <span>{request.active ? "Active" : "Closed"}</span>
+                              {!request.active ? <span>Closed</span> : null}
                             </div>
                           </td>
                           <td>{formatRequestStatusLabel(request.status)}</td>
@@ -2278,7 +3111,7 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={7}>No requests match the current filter.</td>
+                        <td colSpan={8}>No requests match the current filter.</td>
                       </tr>
                     )}
                   </tbody>
@@ -2286,80 +3119,35 @@ export function StaffAdminPage({ onReturnToPortal }) {
               </div>
             </section>
 
-            <section className="page-panel">
+            <section className="page-panel staff-panel--request-detail">
               <h3>Request Resolution</h3>
               {selectedRequest ? (
                 <div className="staff-form-grid">
-                  <div className="staff-selection-banner" aria-live="polite">
-                    <div className="staff-selection-banner__eyebrow">Viewing request</div>
-                    <div className="staff-selection-banner__main">
-                      <strong>{selectedRequest.id}</strong>
-                      <span>{selectedRequest.offeringId}</span>
+                  {selectedRequestCount > 0 && !selectedRequestIdSet.has(selectedRequest.id) ? (
+                    <div className="staff-detail-batch-note" role="status">
+                      Open in detail only; batch actions will not include this request.
                     </div>
-                    <div className="staff-selection-banner__note">
-                      {selectedRequest.student?.name ?? selectedRequest.studentId} · {formatRequestStatusLabel(selectedRequest.status)}
-                      {selectedRequestIdSet.has(selectedRequest.id)
-                        ? " · Included in batch selection"
-                        : " · Detail view only, not batch selected"}
-                    </div>
-                  </div>
-                  <div className="staff-context-grid">
-                    <div className={`staff-context-card staff-context-card--workflow staff-context-card--${selectedRequestWorkflow.mode}`}>
-                      <span className="staff-context-card__label">Policy-aware workflow</span>
-                      <strong className="staff-context-card__value">{selectedRequestWorkflow.label}</strong>
-                      <div className="staff-context-list">
-                        <span>{selectedRequestWorkflow.description}</span>
-                        {selectedRequestWorkflow.warning ? <span>{selectedRequestWorkflow.warning}</span> : null}
-                      </div>
-                    </div>
-                    <div className="staff-context-card">
-                      <span className="staff-context-card__label">Student context</span>
-                      <strong className="staff-context-card__value">
-                        {selectedRequest.student?.name ?? selectedRequest.studentId}
-                      </strong>
-                      <div className="staff-context-list">
-                        <span>{selectedRequest.student?.programme ?? "Programme unavailable"}</span>
-                        <span>{selectedRequest.student?.email ?? "Email unavailable"}</span>
-                      </div>
-                    </div>
-                    <div className="staff-context-card">
-                      <span className="staff-context-card__label">Request timing</span>
-                      <strong className="staff-context-card__value">{formatStaffDateTime(selectedRequest.submittedAt)}</strong>
-                      <div className="staff-context-list">
-                        <span>{selectedRequest.active ? "Active request" : "Closed request"}</span>
-                        <span>{formatRequestStatusLabel(selectedRequest.status)}</span>
-                      </div>
-                    </div>
-                    <div className="staff-context-card">
-                      <span className="staff-context-card__label">Student-facing message</span>
-                      <strong className="staff-context-card__value">
-                        {selectedRequest.message ? "Message shown to student" : "No current message"}
-                      </strong>
-                      <div className="staff-context-list">
-                        <span>{selectedRequest.message ?? "No student-facing message recorded."}</span>
-                      </div>
-                    </div>
-                    <div className="staff-context-card">
-                      <span className="staff-context-card__label">Resolution note</span>
-                      <strong className="staff-context-card__value">
-                        {selectedRequest.resolution ? "Office note recorded" : "No office note yet"}
-                      </strong>
-                      <div className="staff-context-list">
-                        <span>{selectedRequest.resolution ?? "This request has not been resolved by the office."}</span>
-                      </div>
-                    </div>
-                  </div>
+                  ) : null}
                   <div className="staff-form-row staff-form-row--stacked">
-                    <label>{allowedRequestActions.length ? "Resolution Note" : "Batch / audit note"}</label>
+                    <div className="staff-form-label-row">
+                      <label>{allowedRequestActions.length ? "Resolution Note" : "Batch / audit note"}</label>
+                      <span
+                        className={
+                          requestResolutionNoteValid
+                            ? "staff-note-counter staff-note-counter--ready"
+                            : "staff-note-counter staff-note-counter--warn"
+                        }
+                      >
+                        Note {requestResolutionNoteProgress}/12
+                      </span>
+                    </div>
                     <textarea
                       className="staff-note-input"
                       value={requestResolutionNote}
                       onChange={(event) => setRequestResolutionNote(event.target.value)}
                       placeholder="Record the office reason and student-facing consequence before resolving."
                     />
-                    {!requestResolutionNoteValid ? (
-                      <p className="staff-inline-note">Required before any request action: at least 12 characters. This note is written to each resolved request and audit event.</p>
-                    ) : null}
+                    <p className="staff-inline-note">Required for actions · saved to audit log</p>
                   </div>
                   {allowedRequestActions.length ? (
                     <>
@@ -2417,6 +3205,16 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           <p className="staff-inline-note">Choose an allowed action to inspect its impact before resolving the request.</p>
                         )}
                       </div>
+                      <div
+                        className={
+                          requestResolutionDisabled
+                            ? "staff-action-lock staff-action-lock--warn"
+                            : "staff-action-lock staff-action-lock--ready"
+                        }
+                        role="status"
+                      >
+                        {requestResolutionLockLabel}
+                      </div>
                       <div className="staff-inline-actions">
                         {RESOLUTION_ACTION_OPTIONS
                           .filter(([value]) => allowedRequestActions.includes(value))
@@ -2426,21 +3224,12 @@ export function StaffAdminPage({ onReturnToPortal }) {
                               type="button"
                               className={value === "approve" ? "mini-button mini-button--primary" : value === "reject" || value === "manual-close" ? "mini-button mini-button--danger" : "mini-button"}
                               onClick={() => handleConfirmResolveRequest(value)}
-                              disabled={requestResolutionDisabled}
+                              title={requestResolutionLockLabel}
                             >
                               {label}
                             </button>
                           ))}
                       </div>
-                      {requestResolutionDisabled ? (
-                        <p className="staff-inline-note">
-                          {!selectedRequest?.active
-                            ? "Only active requests can be resolved. Change the filters or select an active record."
-                            : !requestResolutionNoteValid
-                              ? "Add a specific office note before enabling resolution actions."
-                              : "The selected preview action is not allowed for this workflow."}
-                        </p>
-                      ) : null}
                     </>
                   ) : (
                     <div className="staff-decision-card staff-decision-card--warn">
@@ -2458,47 +3247,74 @@ export function StaffAdminPage({ onReturnToPortal }) {
         ) : null}
 
         {!loading && activeTab === "overrides" ? (
-          <div className="staff-grid">
-            <section className="page-panel">
-              <h3>{overrideForm.studentId.trim() ? `Create override for student ${overrideForm.studentId.trim()}` : "Create Override"}</h3>
-              <div className="staff-form-grid">
-                <div className="staff-form-row">
-                  <label>Student ID</label>
-                  <input
-                    value={overrideForm.studentId}
-                    onChange={(event) => setOverrideForm((current) => ({ ...current, studentId: event.target.value }))}
-                  />
+          <div className="staff-grid staff-grid--overrides">
+            <section className="page-panel staff-override-create staff-panel--override-create">
+              <h3>Create Override</h3>
+              <div className="staff-override-scope" aria-label="Override scope">
+                <div className={overrideForm.studentId.trim() ? "staff-step-card staff-step-card--ready" : "staff-step-card"}>
+                  <span>Student</span>
+                  <strong>{overrideForm.studentId.trim() || "—"}</strong>
                 </div>
-                <div className="staff-form-row">
-                  <label>Offering</label>
-                  <select
-                    value={overrideForm.offeringId}
-                    onChange={(event) =>
-                      setOverrideForm((current) => ({
-                        ...current,
-                        offeringId: event.target.value,
-                        constraintTypes: [],
-                      }))}
-                  >
-                    <option value="">Select an offering</option>
-                    {offerings.map((offering) => (
-                      <option key={offering.id} value={offering.id}>
-                        {offering.id}
-                      </option>
-                    ))}
-                  </select>
+                <div className={overrideForm.offeringId ? "staff-step-card staff-step-card--ready" : "staff-step-card"}>
+                  <span>Offering</span>
+                  <strong>{overrideForm.offeringId || (overrideOfferingCandidatesBusy ? "Checking…" : "—")}</strong>
                 </div>
-                <div className="staff-form-row staff-form-row--stacked">
-                  <label>Constraint Types</label>
+                <div className={overrideForm.constraintTypes.length ? "staff-step-card staff-step-card--ready" : "staff-step-card"}>
+                  <span>Constraints</span>
+                  <strong>{overrideForm.constraintTypes.length || "—"}</strong>
+                </div>
+              </div>
+              <div className="staff-form-grid staff-form-grid--override">
+                <div className="staff-fieldset">
+                  <div className="staff-fieldset__title">Scope</div>
+                  <div className="staff-form-row">
+                    <label>Student ID</label>
+                    <input
+                      value={overrideForm.studentId}
+                      onChange={(event) => setOverrideForm((current) => ({ ...current, studentId: event.target.value }))}
+                    />
+                  </div>
+                  <div className="staff-form-row">
+                    <label>Blocked offering</label>
+                    <select
+                      value={overrideForm.offeringId}
+                      disabled={overrideOfferingSelectDisabled}
+                      onChange={(event) => selectOverrideOffering(event.target.value)}
+                    >
+                      <option value="">{overrideOfferingSelectLabel}</option>
+                      {overrideOfferingCandidates.map((candidate) => {
+                        const constraintLabels = OVERRIDE_OPTIONS.filter((option) =>
+                          candidate.suggestedConstraintIds.includes(option.id),
+                        ).map((option) => option.label);
+
+                        return (
+                          <option key={candidate.offering.id} value={candidate.offering.id}>
+                            {constraintLabels.length
+                              ? `${candidate.offering.id} · ${constraintLabels.join(", ")}`
+                              : candidate.offering.id}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="staff-fieldset">
+                  <div className="staff-fieldset__title">Constraint Resolution</div>
                   <div className="override-chip-grid" role="group" aria-label="Constraint types to bypass">
                     {OVERRIDE_OPTIONS.map((option) => {
                       const active = overrideForm.constraintTypes.includes(option.id);
+                      const suggested = suggestedOverrideConstraintIds.includes(option.id);
 
                       return (
                         <button
                           key={option.id}
                           type="button"
-                          className={active ? "override-chip override-chip--active" : "override-chip"}
+                          className={[
+                            "override-chip",
+                            active ? "override-chip--active" : "",
+                            suggested ? "override-chip--suggested" : "",
+                          ].filter(Boolean).join(" ")}
                           aria-pressed={active}
                           onClick={() => toggleOverrideConstraint(option.id)}
                         >
@@ -2508,70 +3324,102 @@ export function StaffAdminPage({ onReturnToPortal }) {
                     })}
                   </div>
                 </div>
-                <div className="staff-form-row staff-form-row--stacked">
-                  <label>Note</label>
-                  <textarea
-                    className="staff-note-input"
-                    value={overrideForm.note}
-                    onChange={(event) => setOverrideForm((current) => ({ ...current, note: event.target.value }))}
-                  />
-                </div>
-                <div className="staff-inline-actions">
-                  <button
-                    type="button"
-                    className="mini-button mini-button--primary"
-                    onClick={handleCreateOverride}
-                    disabled={!overrideValidation.valid || busyKey === "override:create"}
-                  >
-                    Create Override
-                  </button>
-                </div>
-                {!overrideValidation.valid ? <p className="staff-inline-note">{overrideValidation.detail}</p> : null}
-                <div className="staff-form-row staff-form-row--stacked">
-                  <label>Override Impact Preview</label>
+
+                <div className="staff-fieldset">
+                  <div className="staff-fieldset__title">Preview</div>
                   {overridePreviewBusy ? (
-                    <div className="staff-decision-preview">
-                      <p className="staff-inline-note">Checking how this override would affect the selected student and offering…</p>
+                    <div className="staff-decision-preview staff-decision-preview--empty">
+                      <div className="staff-preview-placeholder">…</div>
                     </div>
                   ) : overrideImpact?.error ? (
                     <div className="staff-decision-preview">
                       <div className="staff-decision-card staff-decision-card--error">
+                        <span className="staff-decision-card__label">Error</span>
                         <strong>{overrideImpact.error.headline}</strong>
                         <p>{overrideImpact.error.detail}</p>
                       </div>
                     </div>
                   ) : overrideImpact ? (
-                    <div className="staff-decision-preview">
+                    <div className="staff-decision-preview staff-decision-preview--flow">
                       <div className={`staff-decision-card staff-decision-card--${formatDecisionTone(overrideImpact.currentDecision)}`}>
-                        <span className="staff-decision-card__label">Current decision</span>
+                        <span className="staff-decision-card__label">Current</span>
                         <strong>{overrideImpact.currentDecision.headline}</strong>
                         {overrideImpact.currentDecision.reasons?.length ? <p>{overrideImpact.currentDecision.reasons[0]}</p> : null}
                       </div>
+                      <div className="staff-preview-arrow" aria-hidden="true">→</div>
                       <div className={`staff-decision-card staff-decision-card--${formatDecisionTone(overrideImpact.overrideDecision)}`}>
-                        <span className="staff-decision-card__label">With override</span>
+                        <span className="staff-decision-card__label">Override</span>
                         <strong>{overrideImpact.overrideDecision.headline}</strong>
                         {overrideImpact.overrideDecision.reasons?.length ? <p>{overrideImpact.overrideDecision.reasons[0]}</p> : null}
                       </div>
-                      <div className="staff-inline-note">
-                        {buildOverrideImpactNote(overrideImpact)}
+                      <div className={hasOverrideImpactChange(overrideImpact) ? "staff-impact-status staff-impact-status--good" : "staff-impact-status staff-impact-status--warn"}>
+                        {hasOverrideImpactChange(overrideImpact) ? buildOverrideImpactNote(overrideImpact) : "No decision change"}
                       </div>
-                      {!hasOverrideImpactChange(overrideImpact) ? (
-                        <div className="staff-inline-note">
-                          The current blocker may be different from the chip selection above. Re-check the current decision before saving the override.
+                    </div>
+                  ) : overrideCurrentDecisionBusy ? (
+                    <div className="staff-decision-preview staff-decision-preview--empty">
+                      <div className="staff-preview-placeholder">…</div>
+                    </div>
+                  ) : overrideCurrentDecision?.error ? (
+                    <div className="staff-decision-preview">
+                      <div className="staff-decision-card staff-decision-card--error">
+                        <span className="staff-decision-card__label">Current</span>
+                        <strong>{overrideCurrentDecision.error.headline}</strong>
+                        <p>{overrideCurrentDecision.error.detail}</p>
+                      </div>
+                    </div>
+                  ) : overrideCurrentDecisionForDisplay ? (
+                    <div className="staff-decision-preview">
+                      <div className={`staff-decision-card staff-decision-card--${formatDecisionTone(overrideCurrentDecisionForDisplay)}`}>
+                        <span className="staff-decision-card__label">
+                          {overrideCurrentDecisionForDisplay.ok ? "Current decision" : "Current blocker"}
+                        </span>
+                        <strong>{overrideCurrentDecisionForDisplay.headline}</strong>
+                        {overrideCurrentDecisionForDisplay.reasons?.length ? <p>{overrideCurrentDecisionForDisplay.reasons[0]}</p> : null}
+                      </div>
+                      {suggestedOverrideConstraintIds.length ? (
+                        <div className="staff-impact-status staff-impact-status--info">
+                          Rule: {OVERRIDE_OPTIONS.filter((option) => suggestedOverrideConstraintIds.includes(option.id)).map((option) => option.label).join(", ")}
                         </div>
                       ) : null}
                     </div>
                   ) : (
-                    <div className="staff-decision-preview">
-                      <p className="staff-inline-note">Select a student, offering, and at least one constraint type to preview the override impact.</p>
+                    <div className="staff-decision-preview staff-decision-preview--empty">
+                      <div className="staff-preview-placeholder">—</div>
                     </div>
                   )}
+                </div>
+
+                <div className="staff-fieldset">
+                  <div className="staff-fieldset__title">Action</div>
+                  <div className="staff-form-row staff-form-row--stacked">
+                    <label>Note</label>
+                    <textarea
+                      className="staff-note-input"
+                      value={overrideForm.note}
+                      onChange={(event) => setOverrideForm((current) => ({ ...current, note: event.target.value }))}
+                    />
+                  </div>
+                  <div className="staff-inline-actions staff-inline-actions--split">
+                    <button
+                      type="button"
+                      className="mini-button mini-button--primary"
+                      onClick={handleCreateOverride}
+                      disabled={overrideCreateDisabled}
+                    >
+                      Create Override
+                    </button>
+                    {!overrideValidation.valid ? <span className="staff-action-status">Missing: {overrideValidation.detail.replace("Required before creating: ", "").replace(".", "")}</span> : null}
+                    {overrideValidation.valid && overridePreviewBusy ? <span className="staff-action-status">Checking impact</span> : null}
+                    {overrideValidation.valid && overrideImpact?.error ? <span className="staff-action-status">Preview unavailable</span> : null}
+                    {overrideValidation.valid && overrideHasNoDecisionChange ? <span className="staff-action-status">No decision change</span> : null}
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section className="page-panel">
-              <h3>Active Overrides</h3>
+            <section className="page-panel staff-override-manage staff-panel--override-manage">
+              <h3>Overrides</h3>
               <div className="staff-table-controls">
                 <label className="staff-toolbar__field">
                   <span>Search</span>
@@ -2661,11 +3509,11 @@ export function StaffAdminPage({ onReturnToPortal }) {
                 </table>
               </div>
               <div className="staff-detail-panel">
-                <h4>Override Detail</h4>
+                <h4>Detail</h4>
                 {selectedOverride ? (
                   <div className="staff-form-grid staff-form-grid--compact">
                     <div className="staff-selection-banner">
-                      <div className="staff-selection-banner__eyebrow">Selected override</div>
+                      <div className="staff-selection-banner__eyebrow">Override</div>
                       <div className="staff-selection-banner__main">
                         <strong title={selectedOverride.id}>{formatCompactId(selectedOverride.id)}</strong>
                         <span>{selectedOverride.offeringId}</span>
@@ -2682,9 +3530,6 @@ export function StaffAdminPage({ onReturnToPortal }) {
                       <div className="staff-context-card">
                         <span className="staff-context-card__label">Offering</span>
                         <strong className="staff-context-card__value">{selectedOverride.offeringId}</strong>
-                        <div className="staff-context-list">
-                          <span>Override applies only to this offering.</span>
-                        </div>
                       </div>
                       <div className="staff-context-card">
                         <span className="staff-context-card__label">Created by</span>
@@ -2693,12 +3538,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
                           <span>{formatStaffDateTime(selectedOverride.createdAt)}</span>
                         </div>
                       </div>
-                      <div className="staff-context-card">
-                        <span className="staff-context-card__label">Constraint types</span>
-                        <strong className="staff-context-card__value">
-                          {selectedOverride.constraintTypes?.length ?? 0} selected
-                        </strong>
-                        <div className="staff-chip-list">
+                      <div className="staff-context-card staff-context-card--constraint">
+                        <span className="staff-context-card__label">Constraint resolved</span>
+                        <div className="staff-chip-list staff-chip-list--primary">
                           {(selectedOverride.constraintTypes ?? []).map((constraintType) => {
                             const option = OVERRIDE_OPTIONS.find((item) => item.id === constraintType);
                             return (
@@ -2708,20 +3550,20 @@ export function StaffAdminPage({ onReturnToPortal }) {
                             );
                           })}
                         </div>
+                        <span className="staff-context-card__meta">
+                          {selectedOverride.constraintTypes?.length ?? 0} selected
+                        </span>
                       </div>
-                      <div className="staff-context-card">
-                        <span className="staff-context-card__label">Office note</span>
-                        <strong className="staff-context-card__value">
-                          {selectedOverride.note ? "Note attached" : "No note attached"}
-                        </strong>
-                        <div className="staff-context-list">
-                          <span>{selectedOverride.note || "No note was recorded for this override."}</span>
+                      {selectedOverride.note ? (
+                        <div className="staff-context-card staff-context-card--note">
+                          <span className="staff-context-card__label">Office note</span>
+                          <span className="staff-context-note">{selectedOverride.note}</span>
                         </div>
-                      </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : (
-                  <p className="staff-inline-note">Select an override to inspect its exact scope, note, and constraint types.</p>
+                  <div className="staff-preview-placeholder">—</div>
                 )}
               </div>
             </section>
@@ -2729,148 +3571,168 @@ export function StaffAdminPage({ onReturnToPortal }) {
         ) : null}
 
         {!loading && activeTab === "audit" ? (
-          <div className="page-stack">
-            <section className="page-panel">
-              <h3>Audit Trail Filters</h3>
-              <div className="staff-summary-bar">
-                <span>{auditSummary.total} total</span>
-                <span>{auditSummary.visible} visible</span>
-                <span>{auditSummary.staff} staff</span>
-                <span>{auditSummary.student} student</span>
-                <span>{auditSummary.overrides} override events</span>
-              </div>
-              <div className="staff-inline-actions staff-inline-actions--quick-filters">
-                <button
-                  type="button"
-                  className={auditActionFilter === "request-resolved" ? "mini-button mini-button--active" : "mini-button"}
-                  onClick={() => setAuditActionFilter("request-resolved")}
-                >
-                  Request resolved
-                </button>
-                <button
-                  type="button"
-                  className={auditActionFilter === "offering-updated" ? "mini-button mini-button--active" : "mini-button"}
-                  onClick={() => setAuditActionFilter("offering-updated")}
-                >
-                  Offering updated
-                </button>
-                <button
-                  type="button"
-                  className={auditActionFilter === "override-created" ? "mini-button mini-button--active" : "mini-button"}
-                  onClick={() => setAuditActionFilter("override-created")}
-                >
-                  Override created
-                </button>
-                <button
-                  type="button"
-                  className={auditActionFilter === "override-deactivated" ? "mini-button mini-button--active" : "mini-button"}
-                  onClick={() => setAuditActionFilter("override-deactivated")}
-                >
-                  Override removed
-                </button>
-                <button
-                  type="button"
-                  className={!auditActionFilter ? "mini-button mini-button--active" : "mini-button"}
-                  onClick={() => setAuditActionFilter("")}
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="staff-table-controls">
-                <label className="staff-toolbar__field">
-                  <span>Actor Type</span>
-                  <select value={auditActorFilter} onChange={(event) => setAuditActorFilter(event.target.value)}>
-                    <option value="all">All</option>
-                    <option value="student">Student</option>
-                    <option value="staff">Staff</option>
-                    <option value="system">System</option>
-                  </select>
-                </label>
-                <label className="staff-toolbar__field">
-                  <span>Action</span>
-                  <select value={auditActionFilter} onChange={(event) => setAuditActionFilter(event.target.value)}>
-                    <option value="">All</option>
-                    {auditActionOptions.map((action) => (
-                      <option key={action} value={action}>
-                        {formatAuditActionLabel(action)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="staff-toolbar__field">
-                  <span>Actor ID</span>
-                  <input value={auditActorIdFilter} onChange={(event) => setAuditActorIdFilter(event.target.value)} />
-                </label>
-                <label className="staff-toolbar__field">
-                  <span>Target Type</span>
-                  <select value={auditTargetTypeFilter} onChange={(event) => setAuditTargetTypeFilter(event.target.value)}>
-                    <option value="all">All</option>
-                    {auditTargetTypeOptions.map((targetType) => (
-                      <option key={targetType} value={targetType}>
-                        {targetType === "constraintOverride" ? "Override" : targetType === "request" ? "Request" : targetType === "offering" ? "Offering" : targetType}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="staff-toolbar__field">
-                  <span>Target / Student</span>
-                  <input value={auditTargetFilter} onChange={(event) => setAuditTargetFilter(event.target.value)} />
-                </label>
-              </div>
-            </section>
-            <section className="page-panel">
-              <h3>Audit Trail</h3>
-              <div className="table-wrap">
-                <table className="portal-table">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>Actor</th>
-                      <th>Action</th>
-                      <th>Target</th>
-                      <th>Subject Student</th>
-                      <th>Summary</th>
-                      <th>State change</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleAuditEvents.length ? (
-                      visibleAuditEvents.map((event) => (
-                        <tr
-                          key={event.id}
-                          className={getSelectableRowClass(event.id === selectedAuditId)}
-                          onClick={() => setSelectedAuditId(event.id)}
-                          onKeyDown={(keyboardEvent) => handleSelectableRowKeyDown(keyboardEvent, () => setSelectedAuditId(event.id))}
-                          tabIndex={0}
-                          aria-selected={event.id === selectedAuditId}
-                        >
-                          <td>{formatStaffDateTime(event.timestamp)}</td>
-                          <td>{formatAuditActorLabel(event)}</td>
-                          <td>{formatAuditActionLabel(event.action)}</td>
-                          <td>{formatAuditTargetLabel(event)}</td>
-                          <td>{event.subjectStudentId ?? "—"}</td>
-                          <td>
-                            <div className="staff-audit-cell">
-                              <strong>{buildAuditEventSummary(event)}</strong>
-                            </div>
-                          </td>
-                          <td>
-                            <div className="staff-audit-cell staff-audit-cell--muted">
-                              <span>{buildAuditEventChange(event)}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
+          <div className="staff-grid staff-grid--audit">
+            <div className="page-stack staff-audit-column">
+              <section className="page-panel staff-panel--audit-filters">
+                <h3>Audit Trail Filters</h3>
+                <div className="staff-summary-bar">
+                  <span>{auditSummary.total} total</span>
+                  <span>{auditSummary.visible} visible</span>
+                  <span>{auditSummary.staff} staff</span>
+                  <span>{auditSummary.student} student</span>
+                  <span>{auditSummary.overrides} override events</span>
+                </div>
+                <div className="staff-inline-actions staff-inline-actions--quick-filters">
+                  <button
+                    type="button"
+                    className={auditActionFilter === "request-resolved" ? "mini-button mini-button--active" : "mini-button"}
+                    onClick={() => setAuditActionFilter("request-resolved")}
+                  >
+                    Request resolved
+                  </button>
+                  <button
+                    type="button"
+                    className={auditActionFilter === "offering-updated" ? "mini-button mini-button--active" : "mini-button"}
+                    onClick={() => setAuditActionFilter("offering-updated")}
+                  >
+                    Offering updated
+                  </button>
+                  <button
+                    type="button"
+                    className={auditActionFilter === "override-created" ? "mini-button mini-button--active" : "mini-button"}
+                    onClick={() => setAuditActionFilter("override-created")}
+                  >
+                    Override created
+                  </button>
+                  <button
+                    type="button"
+                    className={auditActionFilter === "override-deactivated" ? "mini-button mini-button--active" : "mini-button"}
+                    onClick={() => setAuditActionFilter("override-deactivated")}
+                  >
+                    Override removed
+                  </button>
+                  <button
+                    type="button"
+                    className={auditFiltersActive ? "mini-button" : "mini-button mini-button--active"}
+                    onClick={clearAuditFilters}
+                  >
+                    Clear all
+                  </button>
+                </div>
+                <div className="staff-table-controls">
+                  <label className="staff-toolbar__field staff-toolbar__field--wide">
+                    <span>Search all</span>
+                    <input value={auditSearchFilter} onChange={(event) => setAuditSearchFilter(event.target.value)} />
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Actor Type</span>
+                    <select value={auditActorFilter} onChange={(event) => setAuditActorFilter(event.target.value)}>
+                      <option value="all">All</option>
+                      <option value="student">Student</option>
+                      <option value="staff">Staff</option>
+                      <option value="system">System</option>
+                    </select>
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Action</span>
+                    <select value={auditActionFilter} onChange={(event) => setAuditActionFilter(event.target.value)}>
+                      <option value="">All</option>
+                      {auditActionOptions.map((action) => (
+                        <option key={action} value={action}>
+                          {formatAuditActionLabel(action)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Actor ID</span>
+                    <input value={auditActorIdFilter} onChange={(event) => setAuditActorIdFilter(event.target.value)} />
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Target Type</span>
+                    <select value={auditTargetTypeFilter} onChange={(event) => setAuditTargetTypeFilter(event.target.value)}>
+                      <option value="all">All</option>
+                      {auditTargetTypeOptions.map((targetType) => (
+                        <option key={targetType} value={targetType}>
+                          {targetType === "constraintOverride" ? "Override" : targetType === "request" ? "Request" : targetType === "offering" ? "Offering" : targetType}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Target / Student</span>
+                    <input value={auditTargetFilter} onChange={(event) => setAuditTargetFilter(event.target.value)} />
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Sort by</span>
+                    <select value={auditSortKey} onChange={(event) => setAuditSortKey(event.target.value)}>
+                      {AUDIT_SORT_OPTIONS.map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="staff-toolbar__field">
+                    <span>Direction</span>
+                    <select value={auditSortDirection} onChange={(event) => setAuditSortDirection(event.target.value)}>
+                      <option value="desc">Descending</option>
+                      <option value="asc">Ascending</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+              <section className="page-panel staff-panel--audit-list">
+                <h3>Audit Trail · {auditSortLabel} {auditSortDirection === "asc" ? "ascending" : "descending"}</h3>
+                <div className="table-wrap">
+                  <table className="portal-table">
+                    <thead>
                       <tr>
-                        <td colSpan={7}>No audit events match the current filters.</td>
+                        <th>{renderAuditColumnHeader("timestamp", "Timestamp")}</th>
+                        <th>{renderAuditColumnHeader("actor", "Actor")}</th>
+                        <th>{renderAuditColumnHeader("action", "Action")}</th>
+                        <th>{renderAuditColumnHeader("target", "Target")}</th>
+                        <th>{renderAuditColumnHeader("summary", "Summary")}</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-            <section className="page-panel">
+                    </thead>
+                    <tbody>
+                      {visibleAuditEvents.length ? (
+                        visibleAuditEvents.map((event) => (
+                          <tr
+                            key={event.id}
+                            className={getSelectableRowClass(event.id === selectedAuditId)}
+                            onClick={() => setSelectedAuditId(event.id)}
+                            onKeyDown={(keyboardEvent) => handleSelectableRowKeyDown(keyboardEvent, () => setSelectedAuditId(event.id))}
+                            tabIndex={0}
+                            aria-selected={event.id === selectedAuditId}
+                          >
+                            <td>{formatStaffDateTime(event.timestamp)}</td>
+                            <td>{formatAuditActorLabel(event)}</td>
+                            <td>{formatAuditActionLabel(event.action)}</td>
+                            <td>
+                              <div className="staff-audit-cell staff-audit-cell--target">
+                                <strong>{formatAuditTargetLabel(event)}</strong>
+                                {event.subjectStudentId ? <span>Student {event.subjectStudentId}</span> : null}
+                              </div>
+                            </td>
+                            <td>
+                              <div className="staff-audit-cell">
+                                <strong>{buildAuditEventSummary(event)}</strong>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5}>No audit events match the current filters.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+            <section className="page-panel staff-panel--audit-detail">
               <h3>Audit Event Detail</h3>
               {selectedAuditEvent ? (
                 <div className="staff-form-grid">
@@ -2885,7 +3747,9 @@ export function StaffAdminPage({ onReturnToPortal }) {
                   <div className="staff-form-row">
                     <label>Event ID</label>
                     <div>
-                      <span className="staff-mono-cell" title={selectedAuditEvent.id}>{formatCompactId(selectedAuditEvent.id)}</span>
+                      <span className="staff-mono-cell staff-audit-event-id" title={selectedAuditEvent.id}>
+                        {formatCompactId(selectedAuditEvent.id)}
+                      </span>
                     </div>
                   </div>
                   <div className="staff-form-row">

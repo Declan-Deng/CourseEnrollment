@@ -129,9 +129,10 @@ function getCapacityMetrics(course) {
 
   const primary = course.capacityView?.primary ?? "";
   const secondary = course.capacityView?.secondary ?? "";
+  const capacityLabel = course.capacityView?.capacityLabel ?? "";
   const seatsRemaining = Number(primary.match(/^(\d+)\sseat/)?.[1] ?? NaN);
   const waitlist = Number(secondary.match(/^(\d+)\swaiting/)?.[1] ?? NaN);
-  const claimedMatch = secondary.match(/(\d+)\/(\d+)\sseats claimed/);
+  const claimedMatch = `${capacityLabel} ${secondary}`.match(/(\d+)\s*\/\s*(\d+)\s(?:seats\s)?claimed/);
   const taken = Number(claimedMatch?.[1] ?? NaN);
   const capacity = Number(claimedMatch?.[2] ?? NaN);
 

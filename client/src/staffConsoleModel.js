@@ -34,6 +34,22 @@ export const STAFF_LIST_TYPE_OPTIONS = [
   ["Diss", "Dissertation (Diss)"],
 ];
 
+export const STAFF_FACULTY_OPTIONS = [
+  "Faculty of Architecture",
+  "Faculty of Arts",
+  "Faculty of Business and Economics (HKU Business School)",
+  "Faculty of Dentistry",
+  "Faculty of Education",
+  "Faculty of Engineering",
+  "Faculty of Law",
+  "Li Ka Shing Faculty of Medicine",
+  "Faculty of Science",
+  "Faculty of Social Sciences",
+  "School of Biomedical Engineering",
+  "School of Computing and Data Science",
+  "School of Innovation",
+];
+
 export const STAFF_POLICY_OPTIONS = [
   ["firstComeFirstServed", "FCFS"],
   ["lottery", "Lottery"],
@@ -100,9 +116,15 @@ function formatIsoDate(value) {
 }
 
 export function buildOfferingForm(offering) {
+  const primarySlot = offering?.schedule?.[0] ?? {};
+
   return {
     capacity: String(offering?.capacity ?? ""),
     allocationPolicy: offering?.allocationPolicy ?? "firstComeFirstServed",
+    scheduleDay: primarySlot.day ?? "Mon",
+    scheduleStart: primarySlot.start ?? "09:30",
+    scheduleEnd: primarySlot.end ?? "12:20",
+    venue: primarySlot.venue ?? "",
     requestWindowOpen: Boolean(offering?.requestWindow?.isOpen),
     requestWindowClosesOn: toIsoDate(offering?.requestWindow?.closesOn),
     dropWindowOpen: Boolean(offering?.dropWindow?.isOpen),
@@ -221,6 +243,52 @@ export function formatCompactId(value, maxLength = 22) {
   const headLength = Math.max(8, Math.floor((maxLength - 1) * 0.55));
   const tailLength = Math.max(5, maxLength - headLength - 1);
   return `${text.slice(0, headLength)}…${text.slice(-tailLength)}`;
+}
+
+export function formatRequestListId(value) {
+  const text = String(value ?? "");
+  const requestMatch = text.match(/^req-(\d+)-(.+)$/);
+
+  if (requestMatch) {
+    return `…${requestMatch[1].slice(-4)}-${requestMatch[2]}`;
+  }
+
+  return formatCompactId(text, 12);
+}
+
+const PROGRAMME_SHORT_NAMES = [
+  ["Innovative Design and Technology", "MSc(IDT)"],
+  ["Innovation Design and Technology", "MSc(IDT)"],
+  ["Building Services Engineering", "MSc(BSE)"],
+  ["Mechanical Engineering", "MSc(ME)"],
+  ["Microelectronics Science and Technology", "MSc(MEST)"],
+  ["Low-Altitude Technology", "MSc(LAT)"],
+  ["Electrical and Electronic Engineering", "MSc(EEE)"],
+  ["Energy Engineering", "MSc(EnergyE)"],
+  ["Civil Engineering", "MSc(CivE)"],
+  ["Infrastructure Engineering and Management", "MSc(IEM)"],
+  ["Industrial Engineering and Logistics Management", "MSc(IELM)"],
+  ["Robotics and Intelligent Systems", "MSc(RIS)"],
+];
+
+export function formatProgrammeShortName(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return "Programme unavailable";
+  }
+
+  const directMatch = text.match(/^MSc\([^)]*\)$/);
+  if (directMatch) {
+    return text;
+  }
+
+  const mapped = PROGRAMME_SHORT_NAMES.find(([name]) => text.includes(name));
+  if (mapped) {
+    return mapped[1];
+  }
+
+  return formatCompactId(text, 18);
 }
 
 export function compactJson(value) {
@@ -516,6 +584,41 @@ export function buildOverrideImpactNote(overrideImpact) {
   return "The selected override does not change the current decision. Choose the actual blocking constraint shown above before creating it.";
 }
 
+export function getSuggestedOverrideConstraintIds(decision) {
+  if (!decision || decision.ok) {
+    return [];
+  }
+
+  const decisionText = [decision.headline, ...(decision.reasons ?? []), ...(decision.suggestedActions ?? [])]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  const suggestions = [];
+
+  if (/\bprerequisite\b/.test(decisionText)) {
+    suggestions.push("prerequisite");
+  }
+  if (/\bco-?requisite\b|\bcorequisite\b/.test(decisionText)) {
+    suggestions.push("corequisite");
+  }
+  if (/cross[-\s]?faculty/.test(decisionText) && /\bquota\b/.test(decisionText)) {
+    suggestions.push("crossFacultyQuota");
+  } else if (/\bquota\b/.test(decisionText)) {
+    suggestions.push("listQuota");
+  }
+  if (/credit limit|study load|overload/.test(decisionText)) {
+    suggestions.push("creditLimit");
+  }
+  if (/duplicate course code|duplicate/.test(decisionText)) {
+    suggestions.push("duplicate");
+  }
+  if (/timetable clash|time clash|overlaps|conflict day\/time/.test(decisionText)) {
+    suggestions.push("timetableClash");
+  }
+
+  return [...new Set(suggestions)];
+}
+
 function formatAuditActorType(type) {
   switch (type) {
     case "student":
@@ -777,7 +880,7 @@ export function buildAuditEventChange(event) {
     case "offering-created":
       return "Offering is now available to staff and students.";
     case "request-submitted":
-      return `Created as ${formatRequestStatusLabel(afterRequest?.status)}; active = ${afterRequest?.active ? "Yes" : "No"}`;
+      return `Request created in ${formatRequestStatusLabel(afterRequest?.status)} status · ${afterRequest?.active ? "currently active" : "closed"}`;
     case "request-resolved":
       return [
         `Status: ${formatRequestStatusLabel(beforeRequest?.status)} → ${formatRequestStatusLabel(afterRequest?.status)}`,

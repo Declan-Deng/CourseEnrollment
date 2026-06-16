@@ -6,8 +6,8 @@ function RecordRow({ record, archived = false, onNavigate = null }) {
 
   return (
     <tr className={archived ? "portal-row portal-row--archived" : undefined}>
-      <td>{record.course.semester}</td>
-      <td>
+      <td data-mobile-label="Sem">{record.course.semester}</td>
+      <td data-mobile-label="Course">
         <div className="cell-title">
           <strong>{record.course.code}</strong>
           <span>{record.course.title}</span>
@@ -20,17 +20,17 @@ function RecordRow({ record, archived = false, onNavigate = null }) {
           </div>
         </div>
       </td>
-      <td>
+      <td data-mobile-label={archived ? "Status" : "Enrolment status"}>
         <StatusText tone={getRecordTone(record.status)}>{record.statusLabel}</StatusText>
       </td>
-      <td>
+      <td data-mobile-label="Message / next step">
         <div className="cell-title">
           <strong>{record.message}</strong>
           <span>{record.nextStep}</span>
         </div>
       </td>
       {onNavigate ? (
-        <td>
+        <td data-mobile-label="Actions">
           <div className="cell-actions">
             {record.withdrawable ? (
               <button type="button" className="mini-button" onClick={() => onNavigate("cancel")}>

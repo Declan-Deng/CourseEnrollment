@@ -335,16 +335,14 @@ const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable 
     }
   }, [selectedCourse]);
 
-  const compactNote = selectedCourse
-    ? `${selectedCourse.code} selected for timetable comparison.`
-    : "Open only when you want to compare schedules.";
+  const compactNote = selectedCourse ? `${selectedCourse.code} selected for timetable comparison.` : "";
 
   return (
     <section className={`page-panel page-panel--inspection${expanded ? "" : " page-panel--inspection-collapsed"}`}>
       <button type="button" className="course-group__header" onClick={() => setExpanded((currentValue) => !currentValue)}>
         <span className="course-group__title-block">
           <span className="course-group__title">Timetable-aware view</span>
-          <span className="course-group__description">{compactNote}</span>
+          {compactNote ? <span className="course-group__description">{compactNote}</span> : null}
         </span>
         <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
       </button>
@@ -405,22 +403,26 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
 const CapacityDemandCell = memo(function CapacityDemandCell({ course }) {
   const primary = course.capacityView?.primary ?? "Not available";
   const secondary = course.capacityView?.secondary ?? "";
+  const capacityLabel = course.capacityView?.capacityLabel ?? "";
   const lotteryMatch = secondary.match(/^Lottery pool · (.+)$/);
   const isFacultyReviewQueue = secondary === "Faculty review queue";
   const rows = [];
 
   if (lotteryMatch) {
     const claimedMatch = lotteryMatch[1].match(/^(\d+)\/(\d+) seats claimed before draw$/);
-    const claimedLabel = claimedMatch ? `${claimedMatch[1]} / ${claimedMatch[2]} claimed` : lotteryMatch[1].replace(" before draw", "");
+    const claimedLabel = capacityLabel || (claimedMatch ? `${claimedMatch[1]} / ${claimedMatch[2]} claimed` : lotteryMatch[1].replace(" before draw", ""));
 
     rows.push(["Capacity", claimedLabel]);
     rows.push(["Queue", "Lottery pool"]);
     rows.push(["Demand", primary]);
   } else if (isFacultyReviewQueue) {
+    if (capacityLabel) {
+      rows.push(["Capacity", capacityLabel]);
+    }
     rows.push(["Demand", primary]);
     rows.push(["Queue", "Faculty review"]);
   } else {
-    rows.push(["Capacity", primary]);
+    rows.push(["Capacity", capacityLabel || primary]);
     if (secondary) {
       rows.push(["Queue", secondary]);
     }
@@ -664,7 +666,7 @@ const CourseTableRow = memo(function CourseTableRow({
       ref={(node) => registerRowNode(course.id, node)}
       className={rowClass}
     >
-      <td onClick={(event) => event.stopPropagation()}>
+      <td data-mobile-label="Action" onClick={(event) => event.stopPropagation()}>
         <div className="cell-actions">
           <button
             type="button"
@@ -682,7 +684,7 @@ const CourseTableRow = memo(function CourseTableRow({
           ) : null}
         </div>
       </td>
-      <td>
+      <td data-mobile-label="Course">
         <div className={forceDisabled ? "cell-title cell-title--disabled" : "cell-title cell-title--course"}>
           <button
             type="button"
@@ -707,8 +709,8 @@ const CourseTableRow = memo(function CourseTableRow({
           </button>
         </div>
       </td>
-      <td>{formatSchedule(course)}</td>
-      <td>
+      <td data-mobile-label="Schedule">{formatSchedule(course)}</td>
+      <td data-mobile-label="Faculty / Type">
         <div className="cell-title">
           <strong>{course.faculty}</strong>
           <span>{course.department}</span>
@@ -721,10 +723,10 @@ const CourseTableRow = memo(function CourseTableRow({
           </div>
         </div>
       </td>
-      <td>
+      <td data-mobile-label="Capacity / Demand">
         <CapacityDemandCell course={course} />
       </td>
-      <td>
+      <td data-mobile-label="Policy / Window">
         <div className="cell-title" title={policyMeta.title}>
           <span className={`soft-tag soft-tag--policy-compact soft-tag--policy-compact-${policyMeta.variant}`}>
             {policyMeta.label}
@@ -732,7 +734,7 @@ const CourseTableRow = memo(function CourseTableRow({
           <span>{policyMeta.note}</span>
         </div>
       </td>
-      <td>
+      <td data-mobile-label="Eligibility / Next">
         <RulePreviewCell course={course} onLocateCourse={onLocateCourse} />
       </td>
     </tr>
@@ -795,7 +797,7 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
             {groupNote ? <div className="course-group__inline-note">{groupNote}</div> : null}
             <div className="table-wrap">
               <table
-                className="portal-table portal-table--column-banded"
+                className="portal-table portal-table--column-banded portal-table--responsive-cards"
                 aria-label={`${group.label} course table`}
               >
               <caption className="sr-only">{`${group.label} course table`}</caption>
