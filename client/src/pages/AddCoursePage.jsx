@@ -2,14 +2,15 @@ import { memo, useCallback, useDeferredValue, useEffect, useLayoutEffect, useMem
 import { AcademicSummaryStrip, WindowStatusStrip } from "../components/PortalShared";
 import {
   applyGroupViewControls,
-  countCourseGroups,
   createDefaultGroupViewControls,
   createGroupedCourses,
+  formatOfferingCount,
   formatSchedule,
   getCourseGroup,
   getCourseGroups,
   getCourseRowClass,
   getListTypeClass,
+  getListTypeLabel,
   getPolicyCompactMeta,
   getPrimaryAction,
   getRuleSummary,
@@ -41,7 +42,7 @@ const GROUP_CAPACITY_FILTER_OPTIONS = [
 ];
 
 const GROUP_RULE_FILTER_OPTIONS = [
-  { value: "all", label: "All rule previews" },
+  { value: "all", label: "All guidance" },
   { value: "can-request", label: "Can request" },
   { value: "in-progress", label: "Request in progress" },
   { value: "enrolled", label: "Already enrolled" },
@@ -166,7 +167,7 @@ function AnimatedGroupBody({ expanded, children, collapsedNote, animation = "hei
         </div>
       ) : null}
 
-      {!expanded && !renderBody ? (
+      {!expanded && !renderBody && collapsedNote ? (
         <div className="course-group__note">
           <div className="course-group__note-inner">{collapsedNote}</div>
         </div>
@@ -204,17 +205,6 @@ function InlineCourseLink({ text, linkedCourseCode, onJump }) {
   );
 }
 
-const CourseStatusStrip = memo(function CourseStatusStrip({ counts }) {
-  return (
-    <div className="course-status-strip" aria-label="Current course status summary">
-      <span className="course-status-chip course-status-chip--enrolled">{counts.enrolled} enrolled</span>
-      <span className="course-status-chip course-status-chip--requestable">{counts.requestable} requestable</span>
-      <span className="course-status-chip course-status-chip--active">{counts.active} active requests</span>
-      <span className="course-status-chip course-status-chip--blocked">{counts.blocked} blocked/closed</span>
-    </div>
-  );
-});
-
 const FilterSummaryBar = memo(function FilterSummaryBar({ chips, onClearAll }) {
   if (chips.length === 0) {
     return null;
@@ -237,8 +227,7 @@ const FilterSummaryBar = memo(function FilterSummaryBar({ chips, onClearAll }) {
   );
 });
 
-const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse, embedded = false }) {
-  const [expanded, setExpanded] = useState(false);
+const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse }) {
   const selectedSummary = useMemo(
     () => (selectedCourse ? getRuleSummary(selectedCourse) : null),
     [selectedCourse],
@@ -284,146 +273,84 @@ const TimetablePanel = memo(function TimetablePanel({ timetable, selectedCourse,
       ),
     [entries],
   );
+
   const collapsedNote = selectedCourse ? (
     <div className="course-group__compact-note">
       <strong>Watching {selectedCourse.code}</strong>
       <span>
         {selectedSummary?.variant === "clash"
           ? selectedSummary.reasonText
-          : `Open the weekly grid to compare this offering with ${Math.max(visibleCount - 1, 0)} planned class block(s).`}
+          : `Open the weekly grid to compare this offering with ${Math.max(visibleCount - 1, 0)} planned class ${
+              Math.max(visibleCount - 1, 0) === 1 ? "block" : "blocks"
+            }.`}
       </span>
     </div>
   ) : (
     <div className="course-group__compact-note">
-      <strong>No course selected</strong>
-      <span>Select a course below, then open this weekly grid to compare it with your current plan.</span>
+      <strong>Timetable comparison is idle</strong>
+      <span>Select a course below only when you want to compare it against your current class pattern.</span>
     </div>
   );
 
   return (
-    <section
-      className={`course-group course-group--timetable${embedded ? " inspection-card inspection-card--timetable" : ""}${
-        expanded ? "" : " course-group--collapsed"
-      }`}
-    >
+    <div className="timetable-panel">
+      <div className="timetable-panel__summary">
+        {collapsedNote}
+        <span className="course-group__count">{visibleCount}</span>
+      </div>
+      <div className="timetable-board">
+        {TIMETABLE_DAYS.map((day) => {
+          const slots = slotsByDay[day] ?? [];
+
+          return (
+            <div key={day} className="timetable-day">
+              <strong>{day}</strong>
+              <div className="timetable-day__body">
+                {slots.length === 0 ? <span className="status-text status-text--muted">No class</span> : null}
+                {slots.map((entry) => (
+                  <div key={`${day}-${entry.id}-${entry.slot.start}`} className={`tt-chip tt-chip--${entry.tone}`}>
+                    <strong>
+                      {entry.code} {entry.subclass}
+                    </strong>
+                    <span>
+                      {entry.slot.start} - {entry.slot.end}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
+
+const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable }) {
+  const [expanded, setExpanded] = useState(Boolean(selectedCourse));
+
+  useEffect(() => {
+    if (selectedCourse) {
+      setExpanded(true);
+    }
+  }, [selectedCourse]);
+
+  const compactNote = selectedCourse ? `${selectedCourse.code} selected for timetable comparison.` : "";
+
+  return (
+    <section className={`page-panel page-panel--inspection${expanded ? "" : " page-panel--inspection-collapsed"}`}>
       <button type="button" className="course-group__header" onClick={() => setExpanded((currentValue) => !currentValue)}>
-        <span className="course-group__title">
-          Timetable-aware view
-          <span className="course-group__count">{visibleCount}</span>
+        <span className="course-group__title-block">
+          <span className="course-group__title">Timetable-aware view</span>
+          {compactNote ? <span className="course-group__description">{compactNote}</span> : null}
         </span>
         <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
       </button>
-
-      <AnimatedGroupBody
-        expanded={expanded}
-        animation="height"
-        collapsedNote={collapsedNote}
-      >
-        <div className="timetable-board">
-          {TIMETABLE_DAYS.map((day) => {
-            const slots = slotsByDay[day] ?? [];
-
-            return (
-              <div key={day} className="timetable-day">
-                <strong>{day}</strong>
-                <div className="timetable-day__body">
-                  {slots.length === 0 ? <span className="status-text status-text--muted">No class</span> : null}
-                  {slots.map((entry) => (
-                    <div key={`${day}-${entry.id}-${entry.slot.start}`} className={`tt-chip tt-chip--${entry.tone}`}>
-                      <strong>
-                        {entry.code} {entry.subclass}
-                      </strong>
-                      <span>
-                        {entry.slot.start} - {entry.slot.end}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+      <AnimatedGroupBody expanded={expanded} animation="fade" collapsedNote={null}>
+        <div className="inspection-tray">
+          <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} />
         </div>
       </AnimatedGroupBody>
-    </section>
-  );
-});
-
-const SelectedCourseSummary = memo(function SelectedCourseSummary({ course, onLocateCourse }) {
-  if (!course) {
-    return (
-      <div className="inspection-card inspection-card--summary">
-        <div className="selected-course-summary selected-course-summary--empty">
-          <span className="selected-course-summary__eyebrow">Inspection focus</span>
-          <strong className="selected-course-summary__empty-title">No course selected</strong>
-          <div className="selected-course-summary__line">
-            <strong>Tip:</strong>
-            <span>Select a course title below to inspect its rule outcome and compare it against your current timetable.</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const summary = getRuleSummary(course);
-  const policyMeta = getPolicyCompactMeta(course);
-
-  return (
-    <div className="inspection-card inspection-card--summary">
-      <div className="selected-course-summary">
-        <span className="selected-course-summary__eyebrow">Inspection focus</span>
-        <div className="selected-course-summary__header">
-          <div className="selected-course-summary__identity">
-            <strong>{course.code}</strong>
-            <span>Subclass {course.subclass}</span>
-          </div>
-          <span className="selected-course-summary__schedule">{formatSchedule(course)}</span>
-        </div>
-        <p className="selected-course-summary__title">{course.title}</p>
-        <div className="selected-course-summary__meta">
-          <span>{course.faculty}</span>
-          <span>{course.department}</span>
-        </div>
-        <div className="selected-course-summary__chips">
-          <span className={`preview-pill preview-pill--${summary.variant}`}>{summary.conclusion}</span>
-          <span className={getListTypeClass(course.listType)}>{course.listType}</span>
-          <span className={getSubclassClass(course.subclass)}>Subclass {course.subclass}</span>
-          <span className={`soft-tag soft-tag--policy-compact soft-tag--policy-compact-${policyMeta.variant}`}>
-            {policyMeta.label}
-          </span>
-        </div>
-        {summary.reasonText ? (
-          <div className="selected-course-summary__line">
-            <strong>Reason:</strong>
-            <InlineCourseLink
-              text={summary.reasonText}
-              linkedCourseCode={summary.linkedCourseCode}
-              onJump={() => onLocateCourse(course, summary.linkedCourseCode)}
-            />
-          </div>
-        ) : null}
-        {summary.nextText ? (
-          <div className="selected-course-summary__line">
-            <strong>Next:</strong>
-            <InlineCourseLink
-              text={summary.nextText}
-              linkedCourseCode={summary.linkedCourseCode}
-              onJump={() => onLocateCourse(course, summary.linkedCourseCode)}
-            />
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-});
-
-const InspectionTray = memo(function InspectionTray({ selectedCourse, timetable, onLocateCourse }) {
-  return (
-    <section className="page-panel page-panel--inspection">
-      <h3>Inspection tray</h3>
-      <div className="inspection-tray">
-        <SelectedCourseSummary course={selectedCourse} onLocateCourse={onLocateCourse} />
-        <TimetablePanel timetable={timetable} selectedCourse={selectedCourse} embedded />
-      </div>
     </section>
   );
 });
@@ -439,14 +366,14 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
       {hasDetail ? (
         <button
           type="button"
-          className="rule-preview__toggle"
+          className="rule-preview__link"
           onClick={(event) => {
             event.stopPropagation();
             setExpanded((currentValue) => !currentValue);
           }}
           aria-expanded={expanded}
         >
-          {expanded ? "Hide details" : "Why / Next"}
+          {expanded ? "Hide guidance" : "Guidance"}
         </button>
       ) : null}
       {expanded && summary.reasonText ? (
@@ -469,6 +396,46 @@ const RulePreviewCell = memo(function RulePreviewCell({ course, onLocateCourse }
           />
         </div>
       ) : null}
+    </div>
+  );
+});
+
+const CapacityDemandCell = memo(function CapacityDemandCell({ course }) {
+  const primary = course.capacityView?.primary ?? "Not available";
+  const secondary = course.capacityView?.secondary ?? "";
+  const capacityLabel = course.capacityView?.capacityLabel ?? "";
+  const lotteryMatch = secondary.match(/^Lottery pool · (.+)$/);
+  const isFacultyReviewQueue = secondary === "Faculty review queue";
+  const rows = [];
+
+  if (lotteryMatch) {
+    const claimedMatch = lotteryMatch[1].match(/^(\d+)\/(\d+) seats claimed before draw$/);
+    const claimedLabel = capacityLabel || (claimedMatch ? `${claimedMatch[1]} / ${claimedMatch[2]} claimed` : lotteryMatch[1].replace(" before draw", ""));
+
+    rows.push(["Capacity", claimedLabel]);
+    rows.push(["Queue", "Lottery pool"]);
+    rows.push(["Demand", primary]);
+  } else if (isFacultyReviewQueue) {
+    if (capacityLabel) {
+      rows.push(["Capacity", capacityLabel]);
+    }
+    rows.push(["Demand", primary]);
+    rows.push(["Queue", "Faculty review"]);
+  } else {
+    rows.push(["Capacity", capacityLabel || primary]);
+    if (secondary) {
+      rows.push(["Queue", secondary]);
+    }
+  }
+
+  return (
+    <div className="capacity-demand">
+      {rows.map(([label, value]) => (
+        <div key={`${label}-${value}`} className="capacity-demand__row">
+          <span>{label}</span>
+          <strong>{value}</strong>
+        </div>
+      ))}
     </div>
   );
 });
@@ -699,7 +666,7 @@ const CourseTableRow = memo(function CourseTableRow({
       ref={(node) => registerRowNode(course.id, node)}
       className={rowClass}
     >
-      <td onClick={(event) => event.stopPropagation()}>
+      <td data-mobile-label="Action" onClick={(event) => event.stopPropagation()}>
         <div className="cell-actions">
           <button
             type="button"
@@ -717,7 +684,7 @@ const CourseTableRow = memo(function CourseTableRow({
           ) : null}
         </div>
       </td>
-      <td>
+      <td data-mobile-label="Course">
         <div className={forceDisabled ? "cell-title cell-title--disabled" : "cell-title cell-title--course"}>
           <button
             type="button"
@@ -736,31 +703,30 @@ const CourseTableRow = memo(function CourseTableRow({
             type="button"
             className="course-title-button__inspect"
             onClick={() => onInspect(course.id)}
-            aria-label={`View details for ${course.code}`}
+            aria-label={`Open inspection panel for ${course.code}`}
           >
-            Details
+            Inspect
           </button>
         </div>
       </td>
-      <td>{formatSchedule(course)}</td>
-      <td>
+      <td data-mobile-label="Schedule">{formatSchedule(course)}</td>
+      <td data-mobile-label="Faculty / Type">
         <div className="cell-title">
           <strong>{course.faculty}</strong>
           <span>{course.department}</span>
           <div className="tag-row">
-            <span className={getListTypeClass(course.listType)}>{course.listType}</span>
+            <span className={getListTypeClass(course.listType)} title={getListTypeLabel(course.listType)}>
+              {course.listType}
+            </span>
             <span className={getSubclassClass(course.subclass)}>Subclass {course.subclass}</span>
             {course.crossFaculty ? <span className="soft-tag soft-tag--accent">Cross-faculty</span> : null}
           </div>
         </div>
       </td>
-      <td>
-        <div className="cell-title">
-          <strong>{course.capacityView.primary}</strong>
-          <span>{course.capacityView.secondary}</span>
-        </div>
+      <td data-mobile-label="Capacity / Demand">
+        <CapacityDemandCell course={course} />
       </td>
-      <td>
+      <td data-mobile-label="Policy / Window">
         <div className="cell-title" title={policyMeta.title}>
           <span className={`soft-tag soft-tag--policy-compact soft-tag--policy-compact-${policyMeta.variant}`}>
             {policyMeta.label}
@@ -768,7 +734,7 @@ const CourseTableRow = memo(function CourseTableRow({
           <span>{policyMeta.note}</span>
         </div>
       </td>
-      <td>
+      <td data-mobile-label="Eligibility / Next">
         <RulePreviewCell course={course} onLocateCourse={onLocateCourse} />
       </td>
     </tr>
@@ -817,7 +783,11 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
         <span className="course-group__toggle">{expanded ? "Hide" : "Show"}</span>
       </button>
 
-      <AnimatedGroupBody expanded={expanded} animation={groupAnimation} collapsedNote={`${courses.length} offering(s) visible in this group.`}>
+      <AnimatedGroupBody
+        expanded={expanded}
+        animation={groupAnimation}
+        collapsedNote={`${formatOfferingCount(courses.length)} visible in this group.`}
+      >
         {courses.length === 0 ? (
           <div className="course-group__empty">
             {totalCourses === 0 ? "No course is currently in this group." : "No course in this group matches the current sort / filter menu."}
@@ -827,7 +797,7 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
             {groupNote ? <div className="course-group__inline-note">{groupNote}</div> : null}
             <div className="table-wrap">
               <table
-                className="portal-table portal-table--column-banded"
+                className="portal-table portal-table--column-banded portal-table--responsive-cards"
                 aria-label={`${group.label} course table`}
               >
               <caption className="sr-only">{`${group.label} course table`}</caption>
@@ -889,7 +859,7 @@ const GroupedCourseTable = memo(function GroupedCourseTable({
                   </th>
                   <th scope="col">
                     <ColumnHeaderControl
-                      label="Rule Preview"
+                      label="Eligibility / Next"
                       columnId="rule"
                       controls={controls}
                       options={options}
@@ -953,6 +923,9 @@ export function AddCoursePage({
   const [onlyOpen, setOnlyOpen] = useState(false);
   const [onlyEnrolled, setOnlyEnrolled] = useState(preset === "enrolled");
   const [toolsExpanded, setToolsExpanded] = useState(false);
+  const [advancedScheduleFilter, setAdvancedScheduleFilter] = useState("all");
+  const [advancedCapacityFilter, setAdvancedCapacityFilter] = useState("all");
+  const [advancedRuleFilter, setAdvancedRuleFilter] = useState("all");
   const [expandedGroups, setExpandedGroups] = useState(() =>
     Object.fromEntries(COURSE_GROUPS.map((group) => [group.id, group.defaultExpanded])),
   );
@@ -1056,20 +1029,53 @@ export function AddCoursePage({
         const matchesPolicy = policyFilter === "all" || getPolicyCompactMeta(course).label === policyFilter;
         const matchesOpen = !onlyOpen || course.requestOpen;
         const matchesEnrolled = !onlyEnrolled || course.currentState.kind === "approved";
+        const matchesAdvanced = matchesGroupViewFilters(course, {
+          scheduleFilter: advancedScheduleFilter,
+          capacityFilter: advancedCapacityFilter,
+          ruleFilter: advancedRuleFilter,
+        });
 
-        return matchesQuery && matchesFaculty && matchesPolicy && matchesOpen && matchesEnrolled;
+        return matchesQuery && matchesFaculty && matchesPolicy && matchesOpen && matchesEnrolled && matchesAdvanced;
       }),
-    [courses, normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled],
+    [
+      courses,
+      normalizedQuery,
+      facultyFilter,
+      policyFilter,
+      onlyOpen,
+      onlyEnrolled,
+      advancedScheduleFilter,
+      advancedCapacityFilter,
+      advancedRuleFilter,
+    ],
   );
 
-  const overallCountSummary = useMemo(() => countCourseGroups(courses), [courses]);
   const courseOrderMap = useMemo(() => new Map(courses.map((course, index) => [course.id, index])), [courses]);
   const filteredGroups = useMemo(() => createGroupedCourses(filteredCourses), [filteredCourses]);
   const [requestableShelfIds, setRequestableShelfIds] = useState([]);
   const lastFilterSignatureRef = useRef("");
   const filterSignature = useMemo(
-    () => JSON.stringify({ normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled }),
-    [normalizedQuery, facultyFilter, policyFilter, onlyOpen, onlyEnrolled],
+    () =>
+      JSON.stringify({
+        normalizedQuery,
+        facultyFilter,
+        policyFilter,
+        onlyOpen,
+        onlyEnrolled,
+        advancedScheduleFilter,
+        advancedCapacityFilter,
+        advancedRuleFilter,
+      }),
+    [
+      normalizedQuery,
+      facultyFilter,
+      policyFilter,
+      onlyOpen,
+      onlyEnrolled,
+      advancedScheduleFilter,
+      advancedCapacityFilter,
+      advancedRuleFilter,
+    ],
   );
   const requestableShelfCourses = useMemo(() => {
     const courseById = new Map(filteredCourses.map((course) => [course.id, course]));
@@ -1163,11 +1169,35 @@ export function AddCoursePage({
       chips.push("Enrolled only");
     }
 
+    if (advancedScheduleFilter !== "all") {
+      chips.push(`Schedule: ${GROUP_SCHEDULE_FILTER_OPTIONS.find((option) => option.value === advancedScheduleFilter)?.label ?? advancedScheduleFilter}`);
+    }
+
+    if (advancedCapacityFilter !== "all") {
+      chips.push(`Capacity: ${GROUP_CAPACITY_FILTER_OPTIONS.find((option) => option.value === advancedCapacityFilter)?.label ?? advancedCapacityFilter}`);
+    }
+
+    if (advancedRuleFilter !== "all") {
+      chips.push(`Eligibility: ${GROUP_RULE_FILTER_OPTIONS.find((option) => option.value === advancedRuleFilter)?.label ?? advancedRuleFilter}`);
+    }
+
     return chips;
-  }, [normalizedQuery, query, facultyFilter, policyFilter, onlyOpen, onlyEnrolled]);
+  }, [
+    normalizedQuery,
+    query,
+    facultyFilter,
+    policyFilter,
+    onlyOpen,
+    onlyEnrolled,
+    advancedScheduleFilter,
+    advancedCapacityFilter,
+    advancedRuleFilter,
+  ]);
   const advancedFilterCount = useMemo(
-    () => [facultyFilter !== "all", policyFilter !== "all"].filter(Boolean).length,
-    [facultyFilter, policyFilter],
+    () =>
+      [advancedScheduleFilter !== "all", advancedCapacityFilter !== "all", advancedRuleFilter !== "all"].filter(Boolean)
+        .length,
+    [advancedScheduleFilter, advancedCapacityFilter, advancedRuleFilter],
   );
 
   const registerRowNode = useCallback((courseId, node) => {
@@ -1238,6 +1268,9 @@ export function AddCoursePage({
       setPolicyFilter("all");
       setOnlyOpen(false);
       setOnlyEnrolled(false);
+      setAdvancedScheduleFilter("all");
+      setAdvancedCapacityFilter("all");
+      setAdvancedRuleFilter("all");
     }
 
     if (!matchesGroupViewFilters(targetCourse, groupControls[targetGroupId])) {
@@ -1256,16 +1289,17 @@ export function AddCoursePage({
 
   return (
     <div className="page-stack">
-      <AcademicSummaryStrip
-        student={student}
-        semester={semester}
-        summary={summary}
-        systemMeta={systemMeta}
-        title="Academic Summary"
-        showUrgentActions
-        onRefresh={onRefresh}
-      />
-      <WindowStatusStrip summary={summary} semester={semester} title="Current window and support" tone="info" />
+      <div className="course-hero-grid">
+        <AcademicSummaryStrip
+          student={student}
+          semester={semester}
+          summary={summary}
+          systemMeta={systemMeta}
+          title="Academic Summary"
+          onRefresh={onRefresh}
+        />
+        <WindowStatusStrip summary={summary} semester={semester} title="Current window and support" tone="info" />
+      </div>
 
       <section className="page-panel page-panel--toolbar page-panel--toolbar-compact">
         <h3>Course controls</h3>
@@ -1318,19 +1352,32 @@ export function AddCoursePage({
           <div className="toolbar-section toolbar-section--actions" aria-label="Course control actions">
             <div className="toolbar-section__heading">
               <span className="toolbar-section__eyebrow">Views</span>
-              <strong>Change what is visible</strong>
+              <strong>Display options</strong>
             </div>
             <div className="toolbar-action-cluster">
               <button
                 type="button"
                 className={onlyOpen ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
-                onClick={() => setOnlyOpen((currentValue) => !currentValue)}
+                aria-pressed={onlyOpen}
+                onClick={() => {
+                  setOnlyOpen((currentValue) => {
+                    const nextValue = !currentValue;
+
+                    if (nextValue) {
+                      setOnlyEnrolled(false);
+                    }
+
+                    return nextValue;
+                  });
+                }}
               >
                 Requestable only
+                {onlyOpen ? <span className="toolbar-toggle__state">On</span> : null}
               </button>
               <button
                 type="button"
                 className={onlyEnrolled ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
+                aria-pressed={onlyEnrolled}
                 onClick={() => {
                   setOnlyEnrolled((currentValue) => {
                     const nextValue = !currentValue;
@@ -1344,25 +1391,75 @@ export function AddCoursePage({
                   setOnlyOpen(false);
                 }}
               >
-                Show enrolled
+                Enrolled only
+                {onlyEnrolled ? <span className="toolbar-toggle__state">On</span> : null}
               </button>
               <button
                 type="button"
                 className={toolsExpanded || advancedFilterCount ? "toolbar-toggle toolbar-toggle--active" : "toolbar-toggle"}
+                aria-pressed={toolsExpanded || advancedFilterCount > 0}
                 onClick={() => setToolsExpanded((currentValue) => !currentValue)}
                 aria-expanded={toolsExpanded}
                 aria-controls="course-center-advanced-filters"
               >
-                {`Advanced${advancedFilterCount ? ` (${advancedFilterCount})` : ""}`}
+                {`Advanced filters${advancedFilterCount ? ` (${advancedFilterCount})` : ""}`}
+                {toolsExpanded ? <span className="toolbar-toggle__state">Open</span> : null}
               </button>
             </div>
+            <p className="toolbar-section__hint">
+              These controls filter which offerings stay visible. Section headers below only expand or collapse each group,
+              including Blocked / Closed.
+            </p>
           </div>
         </div>
         {toolsExpanded ? (
           <div id="course-center-advanced-filters" className="toolbar-grid toolbar-grid--advanced">
             <div className="toolbar-advanced-note">
-              Column-level sort and filter tools are also available in each course group header below.
+              <strong>Advanced filters are now active across every group.</strong>
+              <span>Use these when you need schedule, capacity, or eligibility filters beyond the quick row.</span>
             </div>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Schedule</span>
+              <select value={advancedScheduleFilter} onChange={(event) => setAdvancedScheduleFilter(event.target.value)}>
+                {GROUP_SCHEDULE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Capacity</span>
+              <select value={advancedCapacityFilter} onChange={(event) => setAdvancedCapacityFilter(event.target.value)}>
+                {GROUP_CAPACITY_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="toolbar-field toolbar-field--stacked">
+              <span>Eligibility</span>
+              <select value={advancedRuleFilter} onChange={(event) => setAdvancedRuleFilter(event.target.value)}>
+                {GROUP_RULE_FILTER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="toolbar-advanced-reset"
+              disabled={!advancedFilterCount}
+              onClick={() => {
+                setAdvancedScheduleFilter("all");
+                setAdvancedCapacityFilter("all");
+                setAdvancedRuleFilter("all");
+              }}
+            >
+              Reset advanced
+            </button>
           </div>
         ) : null}
         <FilterSummaryBar
@@ -1373,6 +1470,9 @@ export function AddCoursePage({
             setPolicyFilter("all");
             setOnlyOpen(false);
             setOnlyEnrolled(false);
+            setAdvancedScheduleFilter("all");
+            setAdvancedCapacityFilter("all");
+            setAdvancedRuleFilter("all");
             setToolsExpanded(false);
           }}
         />
@@ -1381,14 +1481,10 @@ export function AddCoursePage({
       <InspectionTray
         selectedCourse={selectedCourse}
         timetable={timetable}
-        onLocateCourse={locateRelatedCourse}
       />
 
       <section className="page-panel">
-        <h3>Enrolment Form (Manage Courses) - {totalVisibleCourses} offering(s)</h3>
-        <CourseStatusStrip
-          counts={overallCountSummary}
-        />
+        <h3>{`Course list — ${formatOfferingCount(totalVisibleCourses)}`}</h3>
 
         {totalVisibleCourses === 0 ? (
           <div className="course-group__empty">No courses match the current filters.</div>

@@ -1,22 +1,3 @@
-const QUICK_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-function formatQuickTimestamp(value) {
-  if (!value) {
-    return "Not synced yet";
-  }
-
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return "Not synced yet";
-  }
-
-  return `Updated ${QUICK_TIME_FORMATTER.format(parsed)}`;
-}
-
 function resolvePrimaryAction(activePage, summary, activeRequests) {
   const actionSummary = summary?.studentActionSummary ?? {};
   const configuredAction = actionSummary.primaryAction;
@@ -34,51 +15,48 @@ function resolvePrimaryAction(activePage, summary, activeRequests) {
 
   return activeRequests.length > 0
     ? {
-        label: "Review requests",
+        label: "Manage active requests",
         page: "cancel",
       }
     : {
-        label: "View results",
+        label: "View enrolment results",
         page: "results",
       };
 }
 
-export function QuickGlanceDock({ approvedCourses, activeRequests, summary, systemMeta, onNavigate, onRefresh, activePage }) {
+export function QuickGlanceDock({ activeRequests, summary, onNavigate, activePage }) {
   const actionSummary = summary?.studentActionSummary ?? {};
-  const nextDeadline = actionSummary.nextDeadline ?? "No active deadline";
   const primaryAction = resolvePrimaryAction(activePage, summary, activeRequests);
+  const activeRequestLabel =
+    activeRequests.length === 0
+      ? "No active request"
+      : activeRequests.length === 1
+        ? "1 active request"
+        : `${activeRequests.length} active requests`;
+  const urgencyLabel = actionSummary.urgentActions?.[0] ?? null;
+  const primaryActionLabel =
+    primaryAction.label === "Manage active requests" && activeRequests.length === 1
+      ? "Manage request"
+      : primaryAction.label;
 
   return (
     <div className="quick-dock-wrap">
-      <section className="quick-dock" aria-label="Current enrolment quick glance">
+      <section className="quick-dock" aria-label="Current enrolment quick action">
         <div className="quick-dock__header">
-          <strong>Quick Glance</strong>
-          <span>{systemMeta?.isSyncing ? systemMeta.syncLabel || "Syncing…" : formatQuickTimestamp(systemMeta?.lastUpdatedAt)}</span>
+          <strong>Quick action</strong>
         </div>
         <div className="quick-dock__metrics">
-          <span className="quick-pill quick-pill--neutral">Load {summary.plannedCredits}/{summary.creditLimit} cr</span>
-          <span className="quick-pill">Enrolled {approvedCourses.length}</span>
-          <span className="quick-pill quick-pill--warn">Active {activeRequests.length}</span>
-          <span className="quick-pill quick-pill--neutral">Next {nextDeadline}</span>
+          <span className="quick-pill quick-pill--warn">{activeRequestLabel}</span>
+          {urgencyLabel ? <span className="quick-pill quick-pill--neutral">{urgencyLabel}</span> : null}
         </div>
 
         <div className="quick-dock__actions">
-          {onRefresh ? (
-            <button
-              type="button"
-              className="quick-link"
-              onClick={onRefresh}
-              disabled={systemMeta?.isSyncing}
-            >
-              {systemMeta?.isSyncing ? "Syncing…" : "Refresh"}
-            </button>
-          ) : null}
           <button
             type="button"
             className="quick-link quick-link--primary"
             onClick={() => onNavigate(primaryAction.page)}
           >
-            {primaryAction.label}
+            {primaryActionLabel}
           </button>
         </div>
       </section>

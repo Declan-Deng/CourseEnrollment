@@ -51,5 +51,5 @@ test("closed offerings surface the next relevant checkpoint", async () => {
 
   assert.equal(decision.ok, false);
   assert.equal(decision.uiVariant, "closed");
-  assert.match(decision.reasons.join(" "), /20 - 25 February 2026/);
+  assert.match(decision.reasons.join(" "), /20–25 Feb 2026/);
 });

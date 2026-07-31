@@ -108,9 +108,44 @@ export function resetDemo(options = null) {
   });
 }
 
+export function loginStaff(credentials) {
+  return request("/admin/login", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+}
+
+export function fetchStaffSession(actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/session", {
+    headers: buildStaffHeaders(actorId),
+  });
+}
+
 export function fetchAdminOfferings(actorId = DEFAULT_STAFF_ACTOR_ID) {
   return request("/admin/offerings", {
     headers: buildStaffHeaders(actorId),
+  });
+}
+
+export function fetchAdminCourses(actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/courses", {
+    headers: buildStaffHeaders(actorId),
+  });
+}
+
+export function createAdminCourse(payload, actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/courses", {
+    method: "POST",
+    headers: buildStaffHeaders(actorId),
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createAdminOffering(payload, actorId = DEFAULT_STAFF_ACTOR_ID) {
+  return request("/admin/offerings", {
+    method: "POST",
+    headers: buildStaffHeaders(actorId),
+    body: JSON.stringify(payload),
   });
 }
 

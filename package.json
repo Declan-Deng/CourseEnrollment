@@ -7,9 +7,14 @@
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "build": "npm run build --prefix client",
-    "start": "npm run start --prefix server"
+    "start": "npm run start --prefix server",
+    "test:client": "node --test client/test/*.test.js",
+    "test:browser": "node scripts/browser-e2e-smoke.mjs",
+    "test:server": "npm test --prefix server",
+    "test:server:mongo": "TEST_MONGODB_URI=${TEST_MONGODB_URI:?Set TEST_MONGODB_URI to run Mongo repository contract} npm test --prefix server"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "playwright": "^1.61.0"
   }
 }

@@ -3,13 +3,17 @@ import express from "express";
 import { pathToFileURL } from "node:url";
 import {
   cancelRequest,
+  createAdminCourse,
+  createAdminOffering,
   closeDataStore,
   createAdminOverride,
   deleteAdminOverride,
   dropCourse,
   getBootstrap,
+  getStaffSession,
   getAuditTrail,
   previewAdminOverrideImpact,
+  listAdminCourseView,
   listAdminOverrideView,
   listAdminOfferingView,
   listAdminRequestView,
@@ -17,6 +21,7 @@ import {
   previewAdminRequestResolution,
   getStorageInfo,
   initDataStore,
+  loginStaff,
   previewRequest,
   resetDemo,
   resolveAdminRequest,
@@ -196,6 +201,35 @@ app.delete(
 );
 app.post("/api/reset", respondJson((request) => resetDemo(resolveResetOptions(request))));
 
+app.post(
+  "/api/admin/login",
+  respondJson((request) => loginStaff(requireObjectPayload(request.body, "A staff login payload is required."))),
+);
+app.get(
+  "/api/admin/session",
+  respondJson((request) => getStaffSession(resolveRequestOptions(request))),
+);
+
+app.get(
+  "/api/admin/courses",
+  respondJson((request) => listAdminCourseView(resolveRequestOptions(request))),
+);
+app.post(
+  "/api/admin/courses",
+  respondJson((request) =>
+    createAdminCourse(
+      requireObjectPayload(request.body, "A course payload object is required."),
+      resolveRequestOptions(request),
+    )),
+);
+app.post(
+  "/api/admin/offerings",
+  respondJson((request) =>
+    createAdminOffering(
+      requireObjectPayload(request.body, "An offering payload object is required."),
+      resolveRequestOptions(request),
+    )),
+);
 app.get(
   "/api/admin/offerings",
   respondJson((request) => listAdminOfferingView(resolveRequestOptions(request))),

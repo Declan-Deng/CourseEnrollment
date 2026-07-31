@@ -41,7 +41,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -51,9 +52,22 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+a:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid rgba(43, 81, 140, 0.72);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }
 
 #root {
@@ -176,7 +190,7 @@ select:focus-visible {
   text-decoration: none;
 }
 
-.top-link::after {
+.portal-links__menu > .top-link:not(:last-child)::after {
   content: " |";
   margin-left: 0.25rem;
 }
@@ -275,6 +289,10 @@ select:focus-visible {
   padding: 0.7rem 0.25rem 0;
 }
 
+.sidebar-nav[hidden] {
+  display: none;
+}
+
 .sidebar-link {
   border: 0;
   background: transparent;
@@ -319,4 +337,8 @@ select:focus-visible {
 .portal-main {
   padding: 0.65rem 0.7rem 0.9rem;
   background: var(--page-bg);
+}
+
+.portal-main--with-quick-dock {
+  padding-right: 0.7rem;
 }

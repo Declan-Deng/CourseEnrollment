@@ -1,3 +1,5 @@
+import { Children, cloneElement, isValidElement } from "react";
+
 function resolveWindowSummary(summary, semester) {
   const windowSummary = summary?.windowSummary ?? {};
 
@@ -6,7 +8,12 @@ function resolveWindowSummary(summary, semester) {
     addDropClose: windowSummary.addDropClose ?? semester?.keyDates?.addDropClose ?? null,
     resultCheckWindow: windowSummary.resultCheckWindow ?? semester?.keyDates?.resultCheckWindow ?? null,
     supportContact: windowSummary.supportContact ?? semester?.keyDates?.supportContact ?? null,
+    supportEmail: windowSummary.supportEmail ?? semester?.keyDates?.supportEmail ?? null,
   };
+}
+
+function formatCreditFigure(value, creditLimit) {
+  return `${value ?? 0} / ${creditLimit ?? "—"} credits`;
 }
 
 const SUMMARY_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
@@ -37,21 +44,26 @@ export function AcademicSummaryStrip({
   systemMeta = null,
   onRefresh = null,
 }) {
-  const remainingStudyLoad = Number.isFinite(summary?.creditLimit)
-    ? Math.max(summary.creditLimit - (summary.plannedCredits ?? 0), 0)
+  const creditLimit = summary?.creditLimit ?? student?.semesterStudyLoadLimit ?? null;
+  const confirmedCredits = summary?.confirmedCredits ?? 0;
+  const plannedCredits = summary?.plannedCredits ?? confirmedCredits;
+  const remainingStudyLoad = Number.isFinite(creditLimit)
+    ? Math.max(creditLimit - plannedCredits, 0)
     : null;
   const actionSummary = summary?.studentActionSummary ?? {};
-  const windowSummary = resolveWindowSummary(summary, semester);
   const summaryItems = [
     { label: "Student", value: `${student.id}` },
     { label: "Programme", value: student.programme },
     {
-      label: "Credits",
-      value: `${summary?.plannedCredits ?? 0}/${summary?.creditLimit ?? student?.semesterStudyLoadLimit ?? "—"}`,
+      label: "Confirmed",
+      value: formatCreditFigure(confirmedCredits, creditLimit),
       accent: true,
     },
-    windowSummary.requestClose ? { label: "Request deadline", value: windowSummary.requestClose } : null,
-    windowSummary.supportContact ? { label: "Support", value: windowSummary.supportContact } : null,
+    {
+      label: "Planned incl. active requests",
+      value: formatCreditFigure(plannedCredits, creditLimit),
+      accent: plannedCredits !== confirmedCredits,
+    },
   ].filter(Boolean);
   const urgentActions = Array.isArray(actionSummary.urgentActions)
     ? actionSummary.urgentActions.filter(Boolean).slice(0, 2)
@@ -128,11 +140,11 @@ export function WindowStatusStrip({ summary, semester, title = "Current window",
     Support: "support",
   };
   const rows = [
-    ["Request", windowSummary.requestClose],
-    ["Add / Drop", windowSummary.addDropClose],
-    ["Record Check", windowSummary.resultCheckWindow],
-    ["Support", windowSummary.supportContact],
-  ].filter(([, value]) => Boolean(value));
+    { label: "Request", value: windowSummary.requestClose },
+    { label: "Add / Drop", value: windowSummary.addDropClose },
+    { label: "Record Check", value: windowSummary.resultCheckWindow },
+    { label: "Support", value: windowSummary.supportContact, detail: windowSummary.supportEmail },
+  ].filter((item) => Boolean(item.value));
 
   if (rows.length === 0) {
     return null;
@@ -145,14 +157,15 @@ export function WindowStatusStrip({ summary, semester, title = "Current window",
           <span className="window-status-strip__eyebrow">Planning desk</span>
           <strong className="window-status-strip__title">{title}</strong>
           <span className="window-status-strip__caption">
-            Keep the current request, add/drop, and record-check milestones in view while planning changes.
+            Keep the current request, Add / Drop, and record-check milestones in view while planning changes.
           </span>
         </div>
         <div className="window-status-grid">
-          {rows.map(([label, value]) => (
+          {rows.map(({ label, value, detail }) => (
             <article key={label} className={`window-status-item window-status-item--${toneByLabel[label] ?? "default"}`}>
               <span className="window-status-item__label">{label}</span>
               <strong className="window-status-item__value">{value}</strong>
+              {detail ? <span className="window-status-item__detail">{detail}</span> : null}
             </article>
           ))}
         </div>
@@ -173,10 +186,39 @@ export function StatusText({ tone, children }) {
   return <span className={`status-text status-text--${tone}`}>{children}</span>;
 }
 
+function addMobileCellLabels(children, headers) {
+  return Children.map(children, (row) => {
+    if (!isValidElement(row) || row.type !== "tr") {
+      return row;
+    }
+
+    let headerIndex = 0;
+    const labelledCells = Children.map(row.props.children, (cell) => {
+      if (!isValidElement(cell) || cell.type !== "td") {
+        return cell;
+      }
+
+      const colSpan = Number(cell.props.colSpan ?? 1);
+      const mobileLabel = colSpan === 1 ? headers[headerIndex] : undefined;
+      headerIndex += colSpan;
+
+      if (!mobileLabel || cell.props["data-mobile-label"]) {
+        return cell;
+      }
+
+      return cloneElement(cell, {
+        "data-mobile-label": mobileLabel,
+      });
+    });
+
+    return cloneElement(row, row.props, labelledCells);
+  });
+}
+
 function TableFrame({ headers, children, caption, ariaLabel }) {
   return (
     <div className="table-wrap">
-      <table className="portal-table" aria-label={ariaLabel ?? caption ?? undefined}>
+      <table className="portal-table portal-table--responsive-cards" aria-label={ariaLabel ?? caption ?? undefined}>
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr>
@@ -187,7 +229,7 @@ function TableFrame({ headers, children, caption, ariaLabel }) {
             ))}
           </tr>
         </thead>
-        <tbody>{children}</tbody>
+        <tbody>{addMobileCellLabels(children, headers)}</tbody>
       </table>
     </div>
   );

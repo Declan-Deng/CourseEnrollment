@@ -1,3 +1,5 @@
+import { getReferenceDate, isWindowCurrentlyOpen } from "./windowDates.js";
+
 function sortOfferings(left, right) {
   if (left.code !== right.code) {
     return left.code.localeCompare(right.code);
@@ -7,6 +9,7 @@ function sortOfferings(left, right) {
 }
 
 export function createCatalogIndexes(snapshot) {
+  const referenceDate = getReferenceDate(snapshot.semester?.currentDate);
   const coursesByCode = new Map(snapshot.courses.map((course) => [course.code, course]));
   const offeringsById = new Map(
     snapshot.offerings.map((offering) => {
@@ -24,8 +27,8 @@ export function createCatalogIndexes(snapshot) {
         department: course?.department ?? offering.department ?? "",
         title: course?.title ?? offering.title ?? offering.courseCode,
         synopsis: course?.synopsis ?? offering.synopsis ?? "",
-        requestOpen: offering.requestWindow?.isOpen ?? false,
-        dropOpen: offering.dropWindow?.isOpen ?? false,
+        requestOpen: isWindowCurrentlyOpen(offering.requestWindow, referenceDate),
+        dropOpen: isWindowCurrentlyOpen(offering.dropWindow, referenceDate),
         seats: {
           capacity: offering.capacity,
           taken: offering.seatsTaken,
